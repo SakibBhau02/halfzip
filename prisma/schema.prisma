@@ -1,0 +1,360 @@
+// Prisma schema — Half Zipper admin panel
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/* ------------------------------ admin users ------------------------------- */
+
+enum Role {
+  ADMIN
+  STAFF
+  SUPPLIER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  role         Role      @default(ADMIN)
+  supplierId   String?   @unique
+  supplier     Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+/* ------------------------------- suppliers -------------------------------- */
+
+enum SupplierOrderStatus {
+  PENDING // forwarded by admin, not yet acknowledged
+  ACCEPTED // supplier accepted
+  PACKED // supplier packed
+  SHIPPED // handed to courier
+  DELIVERED
+  RETURNED
+  CANCELLED
+}
+
+model Supplier {
+  id           String    @id @default(cuid())
+  name         String
+  phone        String
+  email        String?
+  address      String?
+  company      String?
+  notes        String?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user        User?
+  costPrices  SupplierProductCost[]
+  credentials CourierCredential[]
+  forwards    SupplierOrder[]
+  ledger      SupplierLedger[]
+  payouts     SupplierPayout[]
+
+  @@index([active])
+}
+
+/** Per-product cost price for a supplier (what the supplier charges the reseller). */
+model SupplierProductCost {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productId  String
+  costPrice  Int // BDT minor — supplier's cost per piece
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([supplierId, productId])
+  @@index([supplierId])
+}
+
+enum CourierProvider {
+  PATHAO
+  REDX
+  STEADFAST
+  SUNDARBAN
+  PAPERFLY
+  OTHER
+}
+
+/** Courier API credentials, set up per-supplier. */
+model CourierCredential {
+  id         String          @id @default(cuid())
+  supplierId String
+  supplier   Supplier        @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  provider   CourierProvider
+  apiKey     String
+  apiSecret  String?
+  baseUrl    String?
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([supplierId, provider])
+  @@index([supplierId])
+}
+
+/** A forward of a reseller order to a supplier. */
+model SupplierOrder {
+  id             String              @id @default(cuid())
+  orderId        String
+  order          Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  status         SupplierOrderStatus @default(PENDING)
+  supplierCost   Int // total cost to supplier for this forward (BDT minor)
+  courierProvider CourierProvider?
+  trackingId     String?
+  consignmentId  String?
+  courierStatus  String? // raw courier status text
+  note           String?
+  forwardedAt    DateTime            @default(now())
+  acceptedAt     DateTime?
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([orderId]) // one supplier per order
+  @@index([supplierId, status])
+}
+
+enum LedgerType {
+  EARNING // reseller margin the supplier now owes us (credited on delivery)
+  WITHDRAWAL // money the supplier has transferred to the reseller
+  ADJUSTMENT
+}
+
+model SupplierLedger {
+  id         String     @id @default(cuid())
+  supplierId String
+  supplier   Supplier   @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  type       LedgerType
+  amount     Int // BDT minor, always positive; sign derived from type
+  orderId    String?
+  note       String?
+  actor      String?
+  createdAt  DateTime   @default(now())
+
+  @@index([supplierId, createdAt])
+}
+
+enum PayoutStatus {
+  REQUESTED
+  APPROVED
+  RECEIVED
+  REJECTED
+}
+
+/** A withdrawal the reseller requests from the supplier (their margin). */
+model SupplierPayout {
+  id         String       @id @default(cuid())
+  supplierId String
+  supplier   Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  amount     Int // requested amount (BDT minor)
+  method     String       @default("BANK") // BANK / BKASH / NAGAD
+  reference  String?
+  status     PayoutStatus @default(REQUESTED)
+  note       String?
+  createdAt  DateTime     @default(now())
+  paidAt     DateTime?
+  updatedAt  DateTime     @updatedAt
+
+  @@index([supplierId, status])
+}
+
+/* -------------------------------- catalog --------------------------------- */
+
+model Product {
+  id          String         @id @default(cuid())
+  name        String
+  slug        String         @unique
+  tagline     String?
+  description String?
+  basePrice   Int // BDT minor unit (poisha). 88000 = ৳880.00
+  oldPrice    Int?
+  combo2Price Int            @default(165000) // 2pc combo price (৳1650)
+  combo3Price Int            @default(240000) // 3pc combo price (৳2400) incl. free delivery
+  freeDeliveryAt Int         @default(3) // qty at which delivery becomes free
+  insideFee   Int            @default(6000) // ৳60.00
+  outsideFee  Int            @default(12000) // ৳120.00
+  active      Boolean        @default(true)
+  variants    ProductVariant[]
+  images      ProductImage[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model ProductVariant {
+  id         String      @id @default(cuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color      String
+  colorHex   String      @default("#000000")
+  size       String
+  sku        String      @unique
+  price      Int // per-variant price override (BDT minor)
+  stock      Int         @default(0)
+  active     Boolean     @default(true)
+  orderItems OrderItem[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([productId, color, size])
+  @@index([productId])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  color     String? // optional: map image to a color
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+/* ------------------------------- customers -------------------------------- */
+
+model Customer {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String?
+  email     String?
+  address   String?
+  district  String?
+  notes     String?
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+}
+
+/* --------------------------------- orders --------------------------------- */
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  RETURNED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD
+  BKASH
+  NAGAD
+  ROCKET
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+model Order {
+  id            String            @id @default(cuid())
+  orderNumber   String            @unique
+  invoiceNumber String?           @unique
+  customerId    String
+  customer      Customer          @relation(fields: [customerId], references: [id])
+  status        OrderStatus       @default(NEW)
+  paymentMethod PaymentMethod     @default(COD)
+  paymentStatus PaymentStatus     @default(UNPAID)
+  subtotal      Int
+  deliveryFee   Int               @default(0)
+  total         Int
+  advancePaid        Int          @default(0) // partial payment received
+  codCollected       Int          @default(0) // amount courier actually collected
+  codCollectedAt     DateTime?
+  courierName   String?
+  courierService     String?
+  trackingId    String?
+  trackingUrl        String?
+  shipName      String
+  shipPhone     String
+  shipAddress   String
+  shipDistrict  String?
+  shipThana          String?
+  shipLandmark       String?
+  source             String       @default("website")
+  printCount         Int          @default(0)
+  lastPrintedAt      DateTime?
+  notes         String?
+  supplierCost  Int               @default(0) // snapshot: supplier's cost for this order
+  items         OrderItem[]
+  statusHistory OrderStatusLog[]
+  auditLogs     AuditLog[]
+  supplierOrder SupplierOrder?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([status, createdAt])
+  @@index([customerId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  action    String
+  field     String?
+  oldValue  String?
+  newValue  String?
+  actor     String?
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model OrderItem {
+  id           String          @id @default(cuid())
+  orderId      String
+  order        Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId    String?
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  quantity     Int             @default(1)
+  unitPrice    Int
+  productName  String
+  variantLabel String
+  @@index([orderId])
+}
+
+model OrderStatusLog {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  from      OrderStatus?
+  to        OrderStatus
+  actor     String?
+  note      String?
+  createdAt DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+/* ------------------------------- settings --------------------------------- */
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

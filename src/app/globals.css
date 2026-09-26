@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Poppins", "Noto Sans Bengali", system-ui, sans-serif;
+  --font-body: "Noto Sans Bengali", "Poppins", system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #f7f3ec;
+  color: #0f0f10;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* prevent iOS auto-zoom on input focus (font-size < 16px triggers zoom) */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* nicer mobile tap targets + no tap highlight */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.section-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.section-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
