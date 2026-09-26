@@ -10,3 +10,4 @@ npm-debug.log*
 public/uploads
 *.log
 .vercel
+tsconfig.tsbuildinfo
