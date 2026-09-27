@@ -9,10 +9,12 @@ import {
   createVariantsBulk,
   updateVariant,
   deleteVariant,
-  createImage,
+  setColorImage,
+  updateImageColor,
   deleteImage,
 } from "@/app/admin/(dashboard)/products/actions";
 import { formatBDT } from "@/lib/utils";
+import { displayUrl } from "@/lib/storage";
 
 type Variant = {
   id: string;
@@ -528,42 +530,139 @@ function VariantsTab({
 
 /* ------------------------------- images tab ----------------------------- */
 
-function ImagesTab({
+/**
+ * Mismatch-proof image manager: every COLOR gets its own card with a live
+ * preview. Upload/change/delete happens ON the color — no free-text mapping.
+ */
+function ColorImageCard({
   productId,
-  images,
+  color,
+  hex,
+  image,
   onChanged,
 }: {
   productId: string;
-  images: ImageRow[];
+  color: string;
+  hex: string;
+  image: ImageRow | undefined;
   onChanged: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [color, setColor] = useState("");
   const [pending, start] = useTransition();
+  const [err, setErr] = useState("");
 
   const upload = async (file: File) => {
     setUploading(true);
+    setErr("");
     try {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error ?? "Upload failed");
+        setErr(data.error ?? "Upload failed");
         return;
       }
-      await createImage(productId, {
+      const out = await setColorImage(productId, {
         url: data.url,
-        alt: "",
+        alt: `${color} product photo`,
         color,
       });
-      onChanged();
+      if (!out.ok) setErr(out.error ?? "Save failed");
+      else onChanged();
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
+  const remove = () =>
+    start(async () => {
+      if (!image) return;
+      if (!confirm(`"${color}" এর ছবি delete করবেন?`)) return;
+      await deleteImage(image.id);
+      onChanged();
+    });
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="relative aspect-[3/4] bg-slate-50">
+        {image ? (
+          <Image
+            src={displayUrl(image.url)}
+            alt={image.alt || color}
+            fill
+            sizes="25vw"
+            className="object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
+            <span className="text-3xl">🖼️</span>
+            <span className="text-xs">ছবি নেই</span>
+          </div>
+        )}
+        <span className="absolute top-2 left-2 flex items-center gap-1.5 text-[11px] font-medium bg-black/70 text-white px-2.5 py-1 rounded-full">
+          <span
+            className="w-2.5 h-2.5 rounded-full border border-white/50"
+            style={{ backgroundColor: hex }}
+          />
+          {color}
+        </span>
+      </div>
+      <div className="p-3 space-y-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/avif"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) upload(f);
+          }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading || pending}
+          className="w-full text-xs font-medium px-3 py-2 rounded-lg bg-gold text-ink hover:brightness-110 transition disabled:opacity-50"
+        >
+          {uploading ? "Uploading…" : image ? "🔄 Change Photo" : "⬆️ Upload Photo"}
+        </button>
+        {image && (
+          <button
+            onClick={remove}
+            disabled={pending}
+            className="w-full text-xs px-3 py-2 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition disabled:opacity-50"
+          >
+            🗑️ Delete
+          </button>
+        )}
+        {err && <p className="text-[11px] text-rose-500">{err}</p>}
+      </div>
+    </div>
+  );
+}
+
+function ImagesTab({
+  productId,
+  images,
+  colors,
+  onChanged,
+}: {
+  productId: string;
+  images: ImageRow[];
+  colors: { name: string; hex: string }[];
+  onChanged: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const byColor = new Map(images.map((i) => [i.color, i]));
+  const unassigned = images.filter((i) => !i.color);
+
+  const assign = (id: string, color: string) =>
+    start(async () => {
+      await updateImageColor(id, color);
+      onChanged();
+    });
 
   const remove = (id: string) =>
     start(async () => {
@@ -574,66 +673,76 @@ function ImagesTab({
 
   return (
     <div className="space-y-5">
-      <div className="bg-white border border-slate-200 rounded-2xl p-5">
-        <h3 className="text-slate-900 font-medium mb-3">Upload Image</h3>
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            placeholder="Map to color (optional)"
-            className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-gold"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/avif"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) upload(f);
-            }}
-            className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gold file:text-ink file:font-medium hover:file:brightness-110"
-          />
-          {uploading && <span className="text-sm text-slate-600">Uploading…</span>}
-        </div>
-        <p className="text-xs text-slate-600 mt-2">
-          JPG / PNG / WebP / AVIF · max 5MB
-        </p>
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
+        প্রতিটা <b>color-এর নিজের card</b>-এ ছবি দিন — mapping ভুল হওয়ার সুযোগ নেই।
+        JPG / PNG / WebP / AVIF · max 5MB · S3-তে save হয়।
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {images.map((img) => (
-          <div
-            key={img.id}
-            className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-white border border-slate-200"
-          >
-            <Image
-              src={img.url}
-              alt={img.alt || "product"}
-              fill
-              sizes="25vw"
-              className="object-cover"
-            />
-            {img.color && (
-              <span className="absolute top-2 left-2 text-[10px] bg-black/70 text-slate-900 px-2 py-0.5 rounded-full">
-                {img.color}
-              </span>
-            )}
-            <button
-              onClick={() => remove(img.id)}
-              disabled={pending}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-rose-600 text-slate-900 text-xs opacity-0 group-hover:opacity-100 transition"
-              aria-label="Delete"
-            >
-              ✕
-            </button>
-          </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        {colors.map((c) => (
+          <ColorImageCard
+            key={c.name}
+            productId={productId}
+            color={c.name}
+            hex={c.hex}
+            image={byColor.get(c.name)}
+            onChanged={onChanged}
+          />
         ))}
-        {images.length === 0 && (
+        {colors.length === 0 && (
           <p className="col-span-full text-center text-slate-600 py-8">
-            এখনো কোনো image নেই।
+            আগে Variants tab থেকে color যোগ করুন।
           </p>
         )}
       </div>
+
+      {unassigned.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5">
+          <h3 className="text-slate-900 font-medium mb-1">Unassigned Images</h3>
+          <p className="text-xs text-slate-600 mb-4">
+            কোনো color-এর সাথে যুক্ত নয় — color বেছে assign করুন বা delete করুন।
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {unassigned.map((img) => (
+              <div
+                key={img.id}
+                className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-50 border border-slate-200"
+              >
+                <Image
+                  src={displayUrl(img.url)}
+                  alt={img.alt || "product"}
+                  fill
+                  sizes="25vw"
+                  className="object-cover"
+                />
+                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent flex gap-1.5">
+                  <select
+                    defaultValue=""
+                    onChange={(e) => e.target.value && assign(img.id, e.target.value)}
+                    disabled={pending}
+                    className="flex-1 text-xs rounded-lg px-2 py-1.5 bg-white text-slate-900 outline-none"
+                  >
+                    <option value="">Assign color…</option>
+                    {colors.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => remove(img.id)}
+                    disabled={pending}
+                    className="text-xs px-2.5 py-1.5 rounded-lg bg-rose-600 text-white"
+                    aria-label="Delete"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -654,6 +763,10 @@ export default function ProductEditor({
   const router = useRouter();
 
   const refresh = () => start(() => router.refresh());
+
+  const colors = Array.from(
+    new Map(variants.map((v) => [v.color, v.colorHex])).entries()
+  ).map(([name, hex]) => ({ name, hex }));
 
   return (
     <div className="space-y-5">
@@ -681,6 +794,7 @@ export default function ProductEditor({
         <ImagesTab
           productId={product.id}
           images={images}
+          colors={colors}
           onChanged={refresh}
         />
       )}

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { displayUrl } from "@/lib/storage";
 
 export type PublicVariant = {
   id: string;
@@ -78,7 +79,7 @@ export async function getPublicProduct(): Promise<PublicProduct> {
         colorMap.set(v.color, {
           name: v.color,
           hex: v.colorHex,
-          image: img,
+          image: displayUrl(img),
           variants: [],
         });
       }

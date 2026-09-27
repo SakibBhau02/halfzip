@@ -215,7 +215,75 @@ export async function deleteImage(id: string): Promise<Result> {
   } catch {
     return { ok: false, error: "Unauthorized" };
   }
+  const img = await prisma.productImage.findUnique({ where: { id } });
+  if (!img) return { ok: false, error: "Image not found" };
   await prisma.productImage.delete({ where: { id } });
+  // also remove the S3 object (local files stay — harmless)
+  const { s3KeyFromUrl, s3Delete } = await import("@/lib/storage");
+  const key = s3KeyFromUrl(img.url);
+  if (key) await s3Delete(key);
+  revalidatePath("/admin/products");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Set (upload/change) the image for ONE color — mismatch-proof.
+ * Replaces the existing image of that color, if any.
+ */
+export async function setColorImage(
+  productId: string,
+  data: { url: string; alt: string; color: string }
+): Promise<Result> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  if (!data.color.trim()) return { ok: false, error: "Color দরকার।" };
+  const existing = await prisma.productImage.findFirst({
+    where: { productId, color: data.color },
+  });
+  if (existing) {
+    // remove old S3 object to avoid orphans
+    const { s3KeyFromUrl, s3Delete } = await import("@/lib/storage");
+    const key = s3KeyFromUrl(existing.url);
+    await prisma.productImage.update({
+      where: { id: existing.id },
+      data: { url: data.url, alt: data.alt || null },
+    });
+    if (key) await s3Delete(key);
+  } else {
+    const count = await prisma.productImage.count({ where: { productId } });
+    await prisma.productImage.create({
+      data: {
+        productId,
+        url: data.url,
+        alt: data.alt || null,
+        color: data.color,
+        sortOrder: count,
+      },
+    });
+  }
+  revalidatePath("/admin/products");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** Remap an unassigned image to a color. */
+export async function updateImageColor(
+  id: string,
+  color: string
+): Promise<Result> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await prisma.productImage.update({
+    where: { id },
+    data: { color: color.trim() || null },
+  });
   revalidatePath("/admin/products");
   revalidatePath("/");
   return { ok: true };

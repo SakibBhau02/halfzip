@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatBDT, formatDate } from "@/lib/utils";
 import SupplierOrderActions from "@/components/supplier/SupplierOrderActions";
+import CourierSyncButton from "@/components/CourierSyncButton";
+import { steadfastStatusBn } from "@/lib/steadfast";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +37,22 @@ export default async function SupplierOrderDetail({
         <Link href="/supplier/orders" className="text-xs text-slate-400 hover:text-amber-700">
           ← Back to orders
         </Link>
-        <h1 className="font-mono text-2xl font-bold text-slate-900 mt-1">
-          {so.order.orderNumber}
-        </h1>
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <h1 className="font-mono text-2xl font-bold text-slate-900">
+            {so.order.orderNumber}
+          </h1>
+          <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-200">
+            {so.order.status}
+          </span>
+        </div>
+        {so.forwardCode && (
+          <div className="mt-2 inline-flex items-center gap-2 bg-amber-50 border border-dashed border-amber-300 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-slate-500">Forward Code:</span>
+            <span className="font-mono text-sm font-bold tracking-widest text-slate-900">
+              {so.forwardCode}
+            </span>
+          </div>
+        )}
         <p className="text-sm text-slate-500 mt-1">
           Forwarded {formatDate(so.forwardedAt)} · Your cost{" "}
           <b className="text-slate-900">{formatBDT(so.supplierCost)}</b>
@@ -84,6 +99,81 @@ export default async function SupplierOrderDetail({
               </p>
             </div>
           </div>
+
+          {/* payment summary */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <h2 className="text-slate-900 font-semibold mb-3">Payment Summary</h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Order Total</span>
+                <span className="text-slate-900 font-medium">
+                  {formatBDT(so.order.total)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Advance Paid</span>
+                <span className="text-slate-900">{formatBDT(so.order.advancePaid)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Collect on Delivery</span>
+                <span className="text-slate-900 font-bold">
+                  {formatBDT(so.order.total - so.order.advancePaid)}
+                </span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-slate-100">
+                <span className="text-slate-500">Payment Status</span>
+                <span className="text-slate-900">{so.order.paymentStatus}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* এই order-এর হিসাব — reseller margin */}
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+            <h2 className="text-slate-900 font-semibold mb-3">
+              এই Order-এর হিসাব
+            </h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Customer price (বিক্রি)</span>
+                <span className="text-slate-900 font-medium">
+                  {formatBDT(so.order.subtotal)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">আপনার cost (কেনা)</span>
+                <span className="text-slate-900">
+                  − {formatBDT(so.supplierCost)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">ডেলিভারি চার্জ</span>
+                <span className="text-slate-900">
+                  + {formatBDT(so.order.deliveryFee)}
+                </span>
+              </div>
+              <div className="flex justify-between pt-2 mt-1 border-t border-amber-200">
+                <span className="text-slate-900 font-semibold">
+                  Reseller-এর লাভ
+                </span>
+                <span className="text-emerald-600 font-bold">
+                  {formatBDT(
+                    so.order.subtotal - so.supplierCost + so.order.deliveryFee
+                  )}
+                </span>
+              </div>
+              <p
+                className={`text-[11px] pt-1 ${
+                  so.status === "DELIVERED"
+                    ? "text-emerald-600"
+                    : "text-slate-500"
+                }`}
+              >
+                {so.status === "DELIVERED"
+                  ? "✓ Delivered — এই লাভ reseller-এর পাওনায় যোগ হয়েছে, আপনাকে দিতে হবে"
+                  : "⏳ Deliver হলে এই লাভ reseller-এর পাওনা হবে"}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -100,8 +190,29 @@ export default async function SupplierOrderDetail({
             status={so.status}
             credentials={credentials}
             trackingId={so.trackingId}
+            consignmentId={so.consignmentId}
             courierProvider={so.courierProvider}
           />
+
+          {so.courierProvider === "STEADFAST" && so.trackingId && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+              <h2 className="text-slate-900 font-semibold">Courier Status</h2>
+              <div className="text-sm space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Steadfast</span>
+                  <span className="text-slate-900 font-medium">
+                    {steadfastStatusBn(so.courierStatus)}
+                  </span>
+                </div>
+                {so.statusCheckedAt && (
+                  <p className="text-[11px] text-slate-400 text-right">
+                    Last checked {formatDate(so.statusCheckedAt)}
+                  </p>
+                )}
+              </div>
+              <CourierSyncButton orderId={so.orderId} variant="supplier" />
+            </div>
+          )}
         </div>
       </div>
     </div>

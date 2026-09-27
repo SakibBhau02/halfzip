@@ -7,6 +7,7 @@ import {
   createSupplier,
   updateSupplierCost,
   toggleSupplierActive,
+  updateSupplierTelegram,
 } from "@/app/admin/(dashboard)/suppliers/actions";
 
 type Row = {
@@ -15,6 +16,7 @@ type Row = {
   company: string;
   phone: string;
   email: string;
+  telegram: string;
   active: boolean;
   forwards: number;
   costPrice: number;
@@ -43,6 +45,40 @@ function CostCell({ supplier }: { supplier: Row }) {
         value={cost}
         onChange={(e) => setCost(e.target.value)}
         className="w-20 rounded border border-slate-200 px-2 py-1 text-sm outline-none focus:border-amber-400"
+      />
+      <button
+        onClick={save}
+        disabled={pending}
+        className="text-[11px] px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-40"
+      >
+        {saved ? "✓" : "Save"}
+      </button>
+    </div>
+  );
+}
+
+function TelegramCell({ supplier }: { supplier: Row }) {
+  const router = useRouter();
+  const [chatId, setChatId] = useState(supplier.telegram);
+  const [pending, start] = useTransition();
+  const [saved, setSaved] = useState(false);
+
+  const save = () =>
+    start(async () => {
+      await updateSupplierTelegram(supplier.id, chatId);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+      router.refresh();
+    });
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-base">{supplier.telegram ? "🔔" : "🔕"}</span>
+      <input
+        value={chatId}
+        onChange={(e) => setChatId(e.target.value)}
+        placeholder="Chat ID"
+        className="w-24 rounded border border-slate-200 px-2 py-1 text-sm font-mono outline-none focus:border-amber-400"
       />
       <button
         onClick={save}
@@ -122,13 +158,14 @@ export default function SuppliersManager({
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[860px]">
+          <table className="w-full text-sm min-w-[980px]">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 {[
                   "Supplier",
                   "Contact",
                   "Cost / pc",
+                  "Telegram",
                   "Forwards",
                   "Margin Due",
                   "Owed",
@@ -143,7 +180,7 @@ export default function SuppliersManager({
             <tbody className="divide-y divide-slate-100">
               {suppliers.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                     এখনো কোনো supplier নেই।
                   </td>
                 </tr>
@@ -162,6 +199,9 @@ export default function SuppliersManager({
                   </td>
                   <td className="px-4 py-3">
                     <CostCell supplier={s} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TelegramCell supplier={s} />
                   </td>
                   <td className="px-4 py-3 text-slate-600">{s.forwards}</td>
                   <td className="px-4 py-3 text-slate-700">{formatBDT(s.earned)}</td>

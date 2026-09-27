@@ -97,17 +97,17 @@ async function main() {
     console.log("ℹ Product already exists — skipping seed");
   }
 
-  // Demo supplier cost price for the product (৳780/pc)
+  // Demo supplier cost price for the product (৳600/pc reseller rate)
   const prod = await prisma.product.findFirst();
   if (prod && supplier) {
     await prisma.supplierProductCost.upsert({
       where: {
         supplierId_productId: { supplierId: supplier.id, productId: prod.id },
       },
-      update: { costPrice: 78000 },
-      create: { supplierId: supplier.id, productId: prod.id, costPrice: 78000 },
+      update: { costPrice: 60000 },
+      create: { supplierId: supplier.id, productId: prod.id, costPrice: 60000 },
     });
-    console.log("✔ Supplier cost price set: ৳780/pc");
+    console.log("✔ Supplier cost price set: ৳600/pc");
   }
 }
 

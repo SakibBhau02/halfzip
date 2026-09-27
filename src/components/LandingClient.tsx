@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import type { PublicProduct } from "@/lib/product";
 import Reveal from "@/components/Reveal";
@@ -24,21 +24,6 @@ function WhatsappIcon({ className = "w-5 h-5" }: { className?: string }) {
     </svg>
   );
 }
-function ChevronLeft() {
-  return (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function ChevronRight() {
-  return (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 const FALLBACK_WHATSAPP = "8801XXXXXXXXX";
 
 declare global {
@@ -50,13 +35,16 @@ declare global {
 }
 
 function trackPurchase(orderNumber: string, total: number) {
+  // NOTE (COD architecture): an order placed is NOT a purchase.
+  // Browser fires intent only; the real Purchase fires server-side
+  // when the courier confirms delivery (courier-truth conversions).
   try {
-    window.gtag?.("event", "purchase", {
+    window.gtag?.("event", "begin_checkout", {
       transaction_id: orderNumber,
       value: total / 100,
       currency: "BDT",
     });
-    window.fbq?.("track", "Purchase", {
+    window.fbq?.("track", "InitiateCheckout", {
       value: total / 100,
       currency: "BDT",
     });
@@ -69,6 +57,51 @@ function trackPurchase(orderNumber: string, total: number) {
   }
 }
 
+/* --------------------------- BD phone validation --------------------------- */
+
+const BD_PHONE_RE = /^01[3-9]\d{8}$/;
+
+/**
+ * Normalize user-typed BD mobile numbers:
+ * strips spaces/dashes, converts 8801XXXXXXXXX → 01XXXXXXXXX.
+ * Returns "" when not a valid Bangladeshi mobile number.
+ */
+export function normalizeBdPhone(raw: string): string {
+  let d = raw.replace(/\D/g, "");
+  if (d.startsWith("880") && d.length === 13) d = "0" + d.slice(3);
+  if (d.startsWith("00880") && d.length === 15) d = "0" + d.slice(5);
+  return BD_PHONE_RE.test(d) ? d : "";
+}
+
+/** Read ad click IDs from cookies/URL for server-side attribution. */
+function getTrackingIds(): {  fbp: string;
+  fbc: string;
+  ttclid: string;
+  gaClientId: string;
+} {
+  const out = { fbp: "", fbc: "", ttclid: "", gaClientId: "" };
+  try {
+    const cookies = Object.fromEntries(
+      document.cookie.split(";").map((c) => {
+        const i = c.indexOf("=");
+        return [c.slice(0, i).trim(), decodeURIComponent(c.slice(i + 1).trim())];
+      })
+    );
+    out.fbp = cookies._fbp ?? "";
+    out.fbc = cookies._fbc ?? "";
+    // TikTok click id: URL param wins, else _ttp cookie
+    const params = new URLSearchParams(window.location.search);
+    out.ttclid = params.get("ttclid") ?? cookies._ttp ?? "";
+    // GA client id = last two parts of _ga cookie
+    const ga = cookies._ga ?? "";
+    const parts = ga.split(".");
+    if (parts.length >= 2) out.gaClientId = parts.slice(-2).join(".");
+  } catch {
+    /* attribution must never break the order flow */
+  }
+  return out;
+}
+
 /* ------------------------------- order form ------------------------------- */
 
 type Line = { colorIdx: number; size: string };
@@ -77,10 +110,12 @@ function OrderForm({
   product,
   activeColorIndex,
   whatsappNumber,
+  onColorPick,
 }: {
   product: PublicProduct;
   activeColorIndex: number;
   whatsappNumber: string;
+  onColorPick: (i: number) => void;
 }) {
   const colors = product.colors;
   const [name, setName] = useState("");
@@ -92,14 +127,22 @@ function OrderForm({
   const [error, setError] = useState("");
   const [done, setDone] = useState<string | null>(null);
 
+  // Initial color follows the gallery selection. Afterwards the form
+  // follows gallery clicks ONLY while untouched (no size picked yet) —
+  // in-progress selections are never wiped.
   const [lines, setLines] = useState<Line[]>([
     { colorIdx: activeColorIndex, size: "" },
   ]);
   const [focusIdx, setFocusIdx] = useState(0);
+  const prevActive = useRef(activeColorIndex);
 
   useEffect(() => {
+    if (prevActive.current === activeColorIndex) return;
+    prevActive.current = activeColorIndex;
     setLines((prev) =>
-      prev.length === 1 ? [{ colorIdx: activeColorIndex, size: "" }] : prev
+      prev.length === 1 && !prev[0].size
+        ? [{ colorIdx: activeColorIndex, size: "" }]
+        : prev
     );
   }, [activeColorIndex]);
 
@@ -141,6 +184,12 @@ function OrderForm({
       setError("অনুগ্রহ করে নাম, ফোন ও ঠিকানা পূরণ করুন।");
       return;
     }
+    // Bangladesh mobile only — normalize + strict check
+    const cleanPhone = normalizeBdPhone(phone);
+    if (!cleanPhone) {
+      setError("সঠিক বাংলাদেশি মোবাইল নাম্বার দিন (01XXXXXXXXX, ১১ সংখ্যা)।");
+      return;
+    }
     for (let i = 0; i < lines.length; i++) {
       if (!lines[i].size) {
         setError(`Product ${i + 1} এর সাইজ নির্বাচন করুন।`);
@@ -164,16 +213,27 @@ function OrderForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          phone,
+          phone: cleanPhone,
           address,
           district,
           zone,
           notes: "",
           items,
+          ...getTrackingIds(),
         }),
       });
       const data = await res.json();
       if (!res.ok) {
+        // 24h duplicate → WhatsApp popup so they can order via chat
+        if (data.code === "DUPLICATE_24H") {
+          const dupMsg = encodeURIComponent(
+            `আসসালামু আলাইকুম! আমি ${name} (${cleanPhone}) — ২৪ ঘণ্টার মধ্যে আরেকটি অর্ডার করতে চাই।\n\n${lines.map((l, i) => `${i + 1}. ${colors[l.colorIdx]?.name} / ${l.size}`).join("\n")}`
+          );
+          window.open(
+            `https://wa.me/${(whatsappNumber || FALLBACK_WHATSAPP).replace(/\D/g, "")}?text=${dupMsg}`,
+            "_blank"
+          );
+        }
         setError(data.error ?? "কিছু ভুল হয়েছে।");
         setLoading(false);
         return;
@@ -188,7 +248,7 @@ function OrderForm({
         )
         .join("\n");
       const msg = encodeURIComponent(
-        `🛍️ অর্ডার — ${product.name}\nনাম: ${name}\nফোন: ${phone}\nঠিকানা: ${address}${district ? ", " + district : ""}\n\n${summary}\n\nঅর্ডার নম্বর: ${data.orderNumber}\nসর্বমোট: ${formatBDT(data.total)}`
+        `🛍️ অর্ডার — ${product.name}\nনাম: ${name}\nফোন: ${cleanPhone}\nঠিকানা: ${address}${district ? ", " + district : ""}\n\n${summary}\n\nঅর্ডার নম্বর: ${data.orderNumber}\nসর্বমোট: ${formatBDT(data.total)}`
       );
       window.open(
         `https://wa.me/${(whatsappNumber || FALLBACK_WHATSAPP).replace(/\D/g, "")}?text=${msg}`,
@@ -202,7 +262,7 @@ function OrderForm({
 
   if (done) {
     return (
-      <section id="order" className="bg-cream py-24 px-6">
+      <section id="order" className="bg-cream py-24 px-6 scroll-mt-16">
         <div className="max-w-lg mx-auto text-center bg-white rounded-2xl p-10 shadow-xl">
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-5 text-3xl">
             ✓
@@ -214,6 +274,12 @@ function OrderForm({
           <p className="text-warmgray text-sm mb-6">
             আমরা শীঘ্রই কল করে অর্ডার কনফার্ম করবো। WhatsApp-এও মেসেজ পাঠানো হয়েছে।
           </p>
+          <a
+            href={`/track?order=${encodeURIComponent(done)}`}
+            className="block w-full bg-ink text-cream font-semibold py-3.5 rounded-xl hover:bg-gold hover:text-ink transition mb-3"
+          >
+            🔍 অর্ডার ট্র্যাক করুন
+          </a>
           <button
             onClick={() => {
               setDone(null);
@@ -233,7 +299,7 @@ function OrderForm({
   }
 
   return (
-    <section id="order" className="bg-cream py-14 sm:py-20 px-4 sm:px-6">
+    <section id="order" className="bg-cream py-14 sm:py-20 px-4 sm:px-6 scroll-mt-16">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-10 sm:mb-12">
           <p className="uppercase tracking-[0.35em] text-xs text-gold mb-3">
@@ -272,8 +338,8 @@ function OrderForm({
                 </div>
               ))}
               {focusColor && (
-                <span className="absolute top-4 left-4 bg-ink/90 text-cream text-xs uppercase tracking-widest px-3 py-1.5 rounded-full z-10">
-                  {focusColor.name}
+                <span className="absolute top-4 left-4 bg-ink/90 text-cream text-sm font-medium px-4 py-2 rounded-full z-10">
+                  কালার: {focusColor.name}
                 </span>
               )}
               {qty >= product.freeDeliveryAt && (
@@ -353,7 +419,11 @@ function OrderForm({
                         <button
                           key={c.name}
                           type="button"
-                          onClick={() => updateLine(i, { colorIdx: ci, size: "" })}
+                          onClick={() => {
+                            updateLine(i, { colorIdx: ci, size: "" });
+                            setFocusIdx(i);
+                            onColorPick(ci);
+                          }}
                           aria-label={c.name}
                           className={`w-8 h-8 rounded-full border-2 transition ${
                             line.colorIdx === ci
@@ -416,6 +486,9 @@ function OrderForm({
                   className="w-full rounded-lg border border-black/10 px-4 py-3 outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
                   placeholder="01XXXXXXXXX"
                 />
+                <p className="text-[11px] text-warmgray mt-1">
+                  শুধু বাংলাদেশি মোবাইল নাম্বার (১১ সংখ্যা)
+                </p>
               </div>
             </div>
 
@@ -521,35 +594,33 @@ function OrderForm({
     </section>
   );
 }
-/* -------------------------------- slider --------------------------------- */
+/* --------------------------------- hero ---------------------------------- */
 
 function HeroSlider({
   product,
-  index,
-  setIndex,
+  manualIndex,
 }: {
   product: PublicProduct;
-  index: number;
-  setIndex: (i: number) => void;
+  /** user-picked color locks the slider; null = auto-sliding showcase */
+  manualIndex: number | null;
 }) {
-  const [paused, setPaused] = useState(false);
   const colors = product.colors;
-
-  const go = useCallback(
-    (dir: number) => setIndex((index + dir + colors.length) % colors.length),
-    [index, setIndex, colors.length]
-  );
+  const [slide, setSlide] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     if (paused || colors.length <= 1) return;
     const t = setInterval(
-      () => setIndex((index + 1) % colors.length),
-      3200
+      () => setSlide((s) => (s + 1) % colors.length),
+      3000
     );
     return () => clearInterval(t);
-  }, [index, paused, setIndex, colors.length]);
+  }, [paused, colors.length]);
 
   if (colors.length === 0) return null;
+
+  const index = manualIndex ?? slide;
+  const active = colors[index] ?? colors[0];
 
   return (
     <div
@@ -578,39 +649,10 @@ function HeroSlider({
           </div>
         ))}
 
-        <span className="absolute top-5 left-5 bg-ink/90 text-cream text-xs uppercase tracking-widest px-3 py-1.5 rounded-full z-10">
-          {colors[index].name}
-        </span>
-
-        {colors.length > 1 && (
-          <>
-            <button
-              onClick={() => go(-1)}
-              aria-label="Previous color"
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/80 backdrop-blur flex items-center justify-center hover:bg-white transition"
-            >
-              <ChevronLeft />
-            </button>
-            <button
-              onClick={() => go(1)}
-              aria-label="Next color"
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/80 backdrop-blur flex items-center justify-center hover:bg-white transition"
-            >
-              <ChevronRight />
-            </button>
-            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10">
-              {colors.map((c, i) => (
-                <button
-                  key={c.name}
-                  onClick={() => setIndex(i)}
-                  aria-label={`Show ${c.name}`}
-                  className={`h-1.5 rounded-full transition-all ${
-                    i === index ? "w-7 bg-ink" : "w-1.5 bg-ink/30"
-                  }`}
-                />
-              ))}
-            </div>
-          </>
+        {active && (
+          <span className="absolute top-5 left-5 bg-ink/90 text-cream text-sm font-medium px-4 py-2 rounded-full z-10">
+            কালার: {active.name}
+          </span>
         )}
       </div>
 
@@ -632,8 +674,15 @@ export default function LandingClient({
   whatsappNumber?: string;
 }) {
   const [colorIndex, setColorIndex] = useState(0);
+  // User-picked color locks the hero slider; null = auto-sliding showcase
+  const [manualColor, setManualColor] = useState<number | null>(null);
+  const pickColor = useCallback((i: number) => {
+    setColorIndex(i);
+    setManualColor(i);
+  }, []);
   const scrollToOrder = useCallback(() => {
     document.getElementById("order")?.scrollIntoView({ behavior: "smooth" });
+    window.location.hash = "order";
   }, []);
 
   const mainColor = product.colors[colorIndex];
@@ -678,13 +727,12 @@ export default function LandingClient({
             <a href="#colors" className="hover:text-ink transition">কালার</a>
             <a href="#order" className="hover:text-ink transition">অর্ডার</a>
           </nav>
-          <button
-            onClick={scrollToOrder}
+          <a
+            href="#order"
             className="bg-ink text-cream text-sm px-5 py-2.5 rounded-full hover:bg-gold transition"
           >
             Order Now
-          </button>
-        </div>
+          </a>        </div>
       </header>
 
       <section className="relative overflow-hidden">
@@ -721,12 +769,12 @@ export default function LandingClient({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={scrollToOrder}
+              <a
+                href="#order"
                 className="bg-ink text-cream px-8 py-4 rounded-xl font-semibold hover:bg-gold transition"
               >
                 Order Now
-              </button>
+              </a>
               <a
                 href="#quality"
                 className="border border-ink/20 px-8 py-4 rounded-xl font-semibold hover:border-ink transition"
@@ -745,8 +793,7 @@ export default function LandingClient({
           <div className="relative animate-fade-up" style={{ animationDelay: "0.15s" }}>
             <HeroSlider
               product={product}
-              index={colorIndex}
-              setIndex={setColorIndex}
+              manualIndex={manualColor}
             />
           </div>
         </div>
@@ -787,7 +834,7 @@ export default function LandingClient({
                   <button
                     key={c.name}
                     onClick={() => {
-                      setColorIndex(i);
+                      pickColor(i);
                       scrollToOrder();
                     }}
                     className="group text-left"
@@ -834,8 +881,8 @@ export default function LandingClient({
             </div>
           </Reveal>
           <Reveal delay={100}>
-            <div className="overflow-hidden rounded-2xl border border-black/10 bg-white">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-2xl border border-black/10 bg-white">
+              <table className="w-full text-sm min-w-[520px]">
                 <thead className="bg-ink text-cream">
                   <tr>
                     {["সাইজ", "চেস্ট (ইঞ্চি)", "লম্বা (ইঞ্চি)", "উপযোগী"].map((h) => (
@@ -874,6 +921,7 @@ export default function LandingClient({
         product={product}
         activeColorIndex={colorIndex}
         whatsappNumber={whatsappNumber ?? FALLBACK_WHATSAPP}
+        onColorPick={pickColor}
       />
 
       <section className="bg-ink text-cream py-14 sm:py-20 px-4 sm:px-6 text-center">
@@ -883,12 +931,12 @@ export default function LandingClient({
         <p className="text-warmgray mb-8 max-w-xl mx-auto">
           সীমিত স্টক। আজই অর্ডার করুন — পণ্য হাতে পেয়ে টাকা দিন।
         </p>
-        <button
-          onClick={scrollToOrder}
+        <a
+          href="#order"
           className="bg-gold text-ink px-10 py-4 rounded-xl font-semibold hover:brightness-110 transition"
         >
           Order Now — {formatBDT(product.basePrice)}
-        </button>
+        </a>
       </section>
 
       <footer className="bg-cream px-4 sm:px-6 py-10 text-center text-sm text-warmgray pb-24">
@@ -896,6 +944,12 @@ export default function LandingClient({
           HALF<span className="text-gold">·</span>ZIPPER
         </p>
         <p>Premium Winter Wear · Bangladesh</p>
+        <a
+          href="/track"
+          className="inline-block mt-5 bg-ink text-cream text-sm font-semibold px-8 py-3 rounded-xl hover:bg-gold hover:text-ink transition"
+        >
+          🔍 অর্ডার ট্র্যাক
+        </a>
         <p className="mt-6 text-xs opacity-70">
           © {new Date().getFullYear()} Half Zipper. All rights reserved.
         </p>
@@ -921,12 +975,12 @@ export default function LandingClient({
               {mainColor ? mainColor.name + " · " : ""}Cash on Delivery
             </p>
           </div>
-          <button
-            onClick={scrollToOrder}
-            className="flex-1 sm:flex-none bg-gold text-ink font-semibold px-5 sm:px-8 py-3 rounded-xl hover:brightness-110 transition text-sm sm:text-base"
+          <a
+            href="#order"
+            className="flex-1 sm:flex-none text-center bg-gold text-ink font-semibold px-5 sm:px-8 py-3 rounded-xl hover:brightness-110 transition text-sm sm:text-base"
           >
             Order Now
-          </button>
+          </a>
         </div>
       </div>
     </main>

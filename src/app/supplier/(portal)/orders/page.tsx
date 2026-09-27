@@ -47,10 +47,10 @@ export default async function SupplierOrders() {
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
+          <table className="w-full text-sm min-w-[960px]">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                {["Order", "Customer", "Items", "Your Cost", "Status", "Date"].map(
+                {["Forward Code", "Order", "Customer", "Items", "Your Cost", "Reseller Margin", "Status", "Date", "Action"].map(
                   (h) => (
                     <th key={h} className="px-4 py-3 text-left font-medium whitespace-nowrap">
                       {h}
@@ -62,7 +62,7 @@ export default async function SupplierOrders() {
             <tbody className="divide-y divide-slate-100">
               {orders.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                     কোনো order নেই।
                   </td>
                 </tr>
@@ -70,12 +70,14 @@ export default async function SupplierOrders() {
               {orders.map((so) => (
                 <tr key={so.id} className="hover:bg-slate-50 transition">
                   <td className="px-4 py-3">
-                    <Link
-                      href={`/supplier/orders/${so.orderId}`}
-                      className="text-amber-700 hover:underline font-medium font-mono"
-                    >
+                    <span className="font-mono text-xs font-bold tracking-wider text-slate-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 whitespace-nowrap">
+                      {so.forwardCode ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-slate-900 font-medium font-mono">
                       {so.order.orderNumber}
-                    </Link>
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-slate-900">{so.order.shipName}</p>
@@ -86,6 +88,9 @@ export default async function SupplierOrders() {
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-900">
                     {formatBDT(so.supplierCost)}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-emerald-600 whitespace-nowrap">
+                    +{formatBDT(so.order.subtotal - so.supplierCost + so.order.deliveryFee)}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -98,6 +103,24 @@ export default async function SupplierOrders() {
                   </td>
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
                     {formatDate(so.forwardedAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/supplier/orders/${so.orderId}`}
+                        className="text-[12px] font-medium px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition whitespace-nowrap"
+                      >
+                        Details
+                      </Link>
+                      {(so.status === "ACCEPTED" || so.status === "PACKED") && (
+                        <Link
+                          href={`/supplier/orders/${so.orderId}#courier`}
+                          className="text-[12px] font-medium px-3 py-1.5 rounded-lg bg-amber-400 text-slate-900 hover:bg-amber-300 transition whitespace-nowrap"
+                        >
+                          🚚 Courier
+                        </Link>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

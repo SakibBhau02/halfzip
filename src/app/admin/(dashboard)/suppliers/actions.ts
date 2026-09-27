@@ -5,9 +5,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getSupplierBalance } from "@/lib/supplier";
+import { forwardCodeFor } from "@/lib/forward-code";
 import type { CourierProvider } from "@prisma/client";
 
-type Result = { ok: boolean; error?: string; id?: string };
+type Result = { ok: boolean; error?: string; id?: string; code?: string };
 
 async function requireAdmin() {
   const session = await auth();
@@ -119,6 +120,24 @@ export async function toggleSupplierActive(
   return { ok: true };
 }
 
+/** Admin sets/updates a supplier's Telegram chat ID for notifications. */
+export async function updateSupplierTelegram(
+  supplierId: string,
+  chatId: string
+): Promise<Result> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await prisma.supplier.update({
+    where: { id: supplierId },
+    data: { telegramChatId: chatId.trim() || null },
+  });
+  revalidatePath("/admin/suppliers");
+  return { ok: true };
+}
+
 /* ------------------------------- forwarding ------------------------------- */
 
 export async function forwardOrderToSupplier(
@@ -153,12 +172,14 @@ export async function forwardOrderToSupplier(
   );
   const costPerPiece = costEntry?.costPrice ?? product?.basePrice ?? 0;
   const supplierCost = costPerPiece * order.items.length;
+  const forwardCode = forwardCodeFor(order.orderNumber);
 
   await prisma.$transaction(async (tx) => {
     await tx.supplierOrder.create({
       data: {
         orderId,
         supplierId,
+        forwardCode,
         supplierCost,
         status: "PENDING",
         note: `Forwarded by ${actor}`,
@@ -172,8 +193,8 @@ export async function forwardOrderToSupplier(
       data: {
         orderId,
         action: "FORWARDED_TO_SUPPLIER",
-        field: "supplierId",
-        newValue: supplier.name,
+        field: "forwardCode",
+        newValue: `${forwardCode} → ${supplier.name}`,
         actor,
       },
     });
@@ -182,7 +203,29 @@ export async function forwardOrderToSupplier(
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
   revalidatePath("/admin/suppliers");
-  return { ok: true };
+  revalidatePath("/track");
+
+  // Notify the supplier on Telegram (must not fail the forward)
+  const { sendTelegramTo, formatForwardTelegram } = await import(
+    "@/lib/telegram"
+  );
+  const { formatBDT } = await import("@/lib/utils");
+  await sendTelegramTo(
+    supplier.telegramChatId,
+    formatForwardTelegram({
+      forwardCode,
+      orderNumber: order.orderNumber,
+      items: order.items.map((i) => i.variantLabel).join(", "),
+      pcs: order.items.length,
+      customerTotal: formatBDT(order.total),
+      supplierCost: formatBDT(supplierCost),
+      shipName: order.shipName,
+      shipPhone: order.shipPhone,
+      shipAddress: order.shipAddress,
+    })
+  );
+
+  return { ok: true, code: forwardCode };
 }
 
 export async function recallForward(orderId: string): Promise<Result> {
@@ -241,6 +284,22 @@ export async function requestWithdrawal(
       status: "REQUESTED",
     },
   });
+
+  // Notify the supplier on Telegram (must not fail the request)
+  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+  const { sendTelegramTo, formatWithdrawalRequestTelegram } = await import(
+    "@/lib/telegram"
+  );
+  const { formatBDT } = await import("@/lib/utils");
+  await sendTelegramTo(
+    supplier?.telegramChatId,
+    formatWithdrawalRequestTelegram({
+      amount: formatBDT(amount),
+      method,
+      note: note || null,
+    })
+  );
+
   revalidatePath("/admin/accounting");
   revalidatePath("/supplier/earnings");
   return { ok: true };
@@ -301,7 +360,6 @@ export async function rejectWithdrawal(
   revalidatePath("/supplier/earnings");
   return { ok: true };
 }
-
 export async function reloadBalances() {
   try {
     await requireAdmin();
@@ -313,4 +371,57 @@ export async function reloadBalances() {
     suppliers.map(async (s) => ({ id: s.id, ...(await getSupplierBalance(s.id)) }))
   );
   return withBal;
+}
+
+/* --------------------------- margin recalculation -------------------------- */
+
+/**
+ * Recompute every EARNING ledger entry from its order:
+ *   margin = বিক্রি (subtotal) − কেনা (supplierCost) + ডেলিভারি (deliveryFee)
+ * Fixes entries written under an older formula. Returns what changed.
+ */
+export async function recalculateMargins(): Promise<{
+  ok: boolean;
+  error?: string;
+  checked?: number;
+  fixed?: number;
+}> {
+  let actor = "admin";
+  try {
+    actor = await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const earnings = await prisma.supplierLedger.findMany({
+    where: { type: "EARNING" },
+  });
+  let fixed = 0;
+  for (const e of earnings) {
+    if (!e.orderId) continue;
+    const o = await prisma.order.findUnique({ where: { id: e.orderId } });
+    if (!o) continue;
+    const expected = o.subtotal - o.supplierCost + o.deliveryFee;
+    if (expected !== e.amount) {
+      await prisma.$transaction([
+        prisma.supplierLedger.update({
+          where: { id: e.id },
+          data: { amount: expected, note: `${e.note ?? ""} [recalculated]`.trim() },
+        }),
+        prisma.auditLog.create({
+          data: {
+            orderId: o.id,
+            action: "MARGIN_RECALCULATED",
+            field: "margin",
+            oldValue: String(e.amount),
+            newValue: String(expected),
+            actor,
+          },
+        }),
+      ]);
+      fixed++;
+    }
+  }
+  revalidatePath("/admin/accounting");
+  revalidatePath("/supplier/earnings");
+  return { ok: true, checked: earnings.length, fixed };
 }

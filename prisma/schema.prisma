@@ -50,6 +50,7 @@ model Supplier {
   address      String?
   company      String?
   notes        String?
+  telegramChatId String? // supplier's Telegram chat for order/payment notifications
   active       Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -111,12 +112,14 @@ model SupplierOrder {
   order          Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   supplierId     String
   supplier       Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  forwardCode    String?             @unique // pretty forward ID, e.g. HZF-20260926-0001
   status         SupplierOrderStatus @default(PENDING)
   supplierCost   Int // total cost to supplier for this forward (BDT minor)
   courierProvider CourierProvider?
   trackingId     String?
   consignmentId  String?
   courierStatus  String? // raw courier status text
+  statusCheckedAt DateTime? // last courier status sync
   note           String?
   forwardedAt    DateTime            @default(now())
   acceptedAt     DateTime?
@@ -299,9 +302,17 @@ model Order {
   lastPrintedAt      DateTime?
   notes         String?
   supplierCost  Int               @default(0) // snapshot: supplier's cost for this order
+  // ad-attribution snapshot (captured at order time, used for server conversions)
+  fbp           String? // Meta browser id (_fbp cookie)
+  fbc           String? // Meta click id (_fbc cookie)
+  ttclid        String? // TikTok click id
+  gaClientId    String? // GA4 client id (_ga cookie)
+  clientIp      String?
+  clientUa      String?
   items         OrderItem[]
   statusHistory OrderStatusLog[]
   auditLogs     AuditLog[]
+  conversions   ConversionEvent[]
   supplierOrder SupplierOrder?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -357,4 +368,34 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/* --------------------------- conversion events --------------------------- */
+
+enum ConversionDestination {
+  META
+  GA4
+  TIKTOK
+}
+
+enum ConversionStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/** Server-side conversion fire log — every courier-triggered event, visible in admin. */
+model ConversionEvent {
+  id          String                @id @default(cuid())
+  orderId     String
+  order       Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  destination ConversionDestination
+  eventName   String
+  value       Int                   @default(0) // BDT minor
+  status      ConversionStatus      @default(SENT)
+  testMode    Boolean               @default(true)
+  detail      String? // fbtrace_id / error message
+  createdAt   DateTime              @default(now())
+
+  @@index([orderId, createdAt])
 }

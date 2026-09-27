@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { recordSupplierWithdrawal } from "@/lib/supplier";
 import type { CourierProvider, SupplierOrderStatus } from "@prisma/client";
 
-type Result = { ok: boolean; error?: string; trackingId?: string };
+type Result = { ok: boolean; error?: string; message?: string; trackingId?: string; consignmentId?: string };
 
 async function requireSupplier() {
   const session = await auth();
@@ -104,17 +104,27 @@ export async function updateSupplierOrderStatus(
   revalidatePath(`/supplier/orders/${orderId}`);
   revalidatePath("/supplier/orders");
   revalidatePath(`/admin/orders/${orderId}`);
+
+  // Courier-truth conversions: supplier-confirmed delivery/return.
+  if (to === "DELIVERED") {
+    const { fireDeliveredConversions } = await import("@/lib/conversions");
+    await fireDeliveredConversions(orderId, so.order.total);
+  } else if (to === "RETURNED") {
+    const { fireCancelledConversions } = await import("@/lib/conversions");
+    await fireCancelledConversions(orderId);
+  }
   return { ok: true };
 }
 
 /* ------------------------------ book courier ------------------------------ */
 
 /**
- * Book a courier using the supplier's saved credentials.
- * NOTE: Real Pathao/RedX/Steadfast booking requires their live API +
- * a verified pickup store. This creates the booking record and (where a
- * baseUrl + apiKey exist) attempts a real POST; on failure it still saves
- * the tracking locally so the supplier can enter a manual tracking code.
+ * Book a courier for a forwarded order.
+ *
+ * STEADFAST: uses the merchant account from Admin → Settings (or the
+ * supplier's own Steadfast credential if saved). Creates a real consignment
+ * via API — in TEST mode a mock consignment is generated instead.
+ * Other providers: manual tracking ID, or supplier's saved credential baseUrl.
  */
 export async function bookCourier(
   orderId: string,
@@ -130,26 +140,63 @@ export async function bookCourier(
 
   const so = await prisma.supplierOrder.findFirst({
     where: { orderId, supplierId },
-    include: { order: true },
+    include: { order: { include: { items: true } } },
   });
   if (!so) return { ok: false, error: "Forward পাওয়া যায়নি।" };
 
   const cred = await prisma.courierCredential.findUnique({
     where: { supplierId_provider: { supplierId, provider } },
   });
-  if (!cred && !manualTrackingId) {
-    return {
-      ok: false,
-      error: `${provider} এর credential setup করুন, অথবা manual tracking ID দিন।`,
-    };
-  }
 
   let trackingId = manualTrackingId?.trim() || "";
   let consignmentId = "";
-  let apiNote = "";
+  let testBooking = false;
 
-  // Attempt a real API call only if a baseUrl is provided
-  if (!trackingId && cred) {
+  // --- Steadfast: automatic consignment via API ---
+  if (!trackingId && provider === "STEADFAST") {
+    try {
+      const { getSteadfastConfig, createSteadfastOrder } = await import(
+        "@/lib/steadfast"
+      );
+      const config = await getSteadfastConfig(
+        cred
+          ? {
+              apiKey: cred.apiKey,
+              secretKey: cred.apiSecret ?? "",
+              baseUrl: cred.baseUrl ?? "",
+            }
+          : undefined
+      );
+      const booking = await createSteadfastOrder(config, {
+        invoice: so.order.invoiceNumber || so.order.orderNumber,
+        recipient_name: so.order.shipName,
+        recipient_phone: so.order.shipPhone,
+        recipient_address: [
+          so.order.shipAddress,
+          so.order.shipThana,
+          so.order.shipDistrict,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        cod_amount: (so.order.total - so.order.advancePaid) / 100,
+        note: `${so.order.orderNumber} · ${so.order.items.length} pcs`,
+      });
+      trackingId = booking.tracking_code;
+      consignmentId = String(booking.consignment_id);
+      testBooking = booking.test;
+    } catch (e) {
+      return {
+        ok: false,
+        error:
+          e instanceof Error
+            ? e.message
+            : "Steadfast booking failed। Manual tracking ID দিন।",
+      };
+    }
+  }
+
+  // --- Other providers: supplier credential baseUrl or manual ID ---
+  if (!trackingId && cred && provider !== "STEADFAST") {
     try {
       const res = await fetch(`${cred.baseUrl || ""}`, {
         method: "POST",
@@ -169,18 +216,19 @@ export async function bookCourier(
         const data = await res.json();
         trackingId = data.tracking_id ?? data.tracking_code ?? "";
         consignmentId = data.consignment_id ?? data.id ?? "";
-      } else {
-        apiNote = "Courier API rejected — tracking saved manually.";
       }
     } catch {
-      apiNote = "Courier API unreachable — tracking saved manually.";
+      /* fall through to manual error below */
     }
   }
 
   if (!trackingId) {
     return {
       ok: false,
-      error: apiNote || "Tracking ID পাওয়া যায়নি। Manual ID দিন।",
+      error:
+        provider === "STEADFAST"
+          ? "Steadfast থেকে consignment পাওয়া যায়নি।"
+          : `${provider} এর credential setup করুন, অথবা manual tracking ID দিন।`,
     };
   }
 
@@ -192,7 +240,11 @@ export async function bookCourier(
         courierProvider: provider,
         trackingId,
         consignmentId: consignmentId || null,
+        courierStatus: testBooking ? "pending (TEST)" : "pending",
         shippedAt: new Date(),
+        note: testBooking
+          ? `${so.note ?? ""} [TEST booking — mock consignment]`.trim()
+          : so.note,
       },
     });
     await tx.order.update({
@@ -203,11 +255,47 @@ export async function bookCourier(
         trackingId,
       },
     });
+    await tx.orderStatusLog.create({
+      data: {
+        orderId,
+        from: "PROCESSING",
+        to: "SHIPPED",
+        actor: "supplier",
+        note: testBooking
+          ? `Steadfast TEST booking: ${trackingId}`
+          : `Courier booked (${provider}): ${trackingId}`,
+      },
+    }).catch(() => {});
   });
 
   revalidatePath(`/supplier/orders/${orderId}`);
+  revalidatePath("/supplier/orders");
   revalidatePath(`/admin/orders/${orderId}`);
-  return { ok: true, trackingId };
+  revalidatePath("/track");
+  return { ok: true, trackingId, consignmentId: consignmentId || undefined };
+}
+
+/* ------------------------------ courier sync ------------------------------ */
+
+/**
+ * Pull the latest Steadfast status for this forward and reflect it
+ * on the order. Works for the supplier on their own forwards.
+ */
+export async function syncCourierStatus(orderId: string): Promise<Result> {
+  let supplierId = "";
+  let email = "supplier";
+  try {
+    ({ supplierId, email } = await requireSupplier());
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const so = await prisma.supplierOrder.findFirst({
+    where: { orderId, supplierId },
+  });
+  if (!so) return { ok: false, error: "Forward পাওয়া যায়নি।" };
+  const { syncForwardCourierStatus } = await import("@/lib/courier-sync");
+  const res = await syncForwardCourierStatus(so.id, email);
+  return { ok: res.ok, error: res.error, message: res.message };
 }
 
 /* --------------------------- courier credentials -------------------------- */
@@ -258,6 +346,47 @@ export async function deleteCourierCredential(
   await prisma.courierCredential.deleteMany({ where: { supplierId, provider } });
   revalidatePath("/supplier/courier");
   return { ok: true };
+}
+
+/* --------------------------- telegram notifications ------------------------ */
+
+/**
+ * Supplier connects their own Telegram: forward + payment-request
+ * notifications will arrive on this chat.
+ */
+export async function saveMyTelegram(chatId: string): Promise<Result> {
+  let supplierId = "";
+  try {
+    ({ supplierId } = await requireSupplier());
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const clean = chatId.trim();
+  if (clean && !/^-?\d+$/.test(clean)) {
+    return { ok: false, error: "Chat ID শুধু সংখ্যা হবে।" };
+  }
+  await prisma.supplier.update({
+    where: { id: supplierId },
+    data: { telegramChatId: clean || null },
+  });
+
+  // Send a confirmation message (proves the connection works)
+  if (clean) {
+    const { sendTelegramTo } = await import("@/lib/telegram");
+    const ok = await sendTelegramTo(
+      clean,
+      `✅ <b>Half Zipper</b> — Telegram connected!\n\nনতুন forward ও payment request-এর notification এখানে আসবে।`
+    );
+    if (!ok) {
+      return {
+        ok: false,
+        error:
+          "Chat ID save হয়েছে, কিন্তু টেস্ট মেসেজ যায়নি। Bot-কে আগে Hi পাঠান, Chat ID ঠিক আছে কিনা দেখুন।",
+      };
+    }
+  }
+  revalidatePath("/supplier");
+  return { ok: true, message: "Connected ✓ টেস্ট মেসেজ পাঠানো হয়েছে!" };
 }
 
 /* ------------------------------- withdrawals ------------------------------ */

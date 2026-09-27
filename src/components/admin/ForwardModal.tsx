@@ -19,6 +19,8 @@ export default function ForwardModal({
   const [selected, setSelected] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
+  const [doneCode, setDoneCode] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/suppliers", { cache: "no-store" })
@@ -40,8 +42,54 @@ export default function ForwardModal({
       }
       const res = await forwardOrderToSupplier(orderId, selected);
       if (!res.ok) setError(res.error ?? "Failed");
-      else onDone();
+      else setDoneCode(res.code ?? "");
     });
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(doneCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  // Success state — show the generated forward code
+  if (doneCode) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+        <div className="relative w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl text-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4 text-2xl">
+            ✓
+          </div>
+          <h3 className="text-slate-900 font-semibold text-lg">
+            Supplier-এর কাছে পাঠানো হয়েছে!
+          </h3>
+          <p className="text-xs text-slate-500 mt-1 mb-4">
+            এই forward code টি supplier তার panel-এ দেখতে পাবে
+          </p>
+          <button
+            onClick={copyCode}
+            title="Click to copy"
+            className="w-full font-mono text-xl font-bold tracking-widest text-slate-900 bg-amber-50 border-2 border-dashed border-amber-400 rounded-xl px-4 py-4 hover:bg-amber-100 transition"
+          >
+            {doneCode}
+          </button>
+          <p className="text-[11px] text-slate-400 mt-2 mb-5">
+            {copied ? "Copied ✓" : "কোডে ক্লিক করলে copy হবে"}
+          </p>
+          <button
+            onClick={onDone}
+            className="w-full bg-gold text-ink font-semibold py-3 rounded-xl hover:brightness-110 transition"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const active = suppliers.filter((s) => s.active);
 

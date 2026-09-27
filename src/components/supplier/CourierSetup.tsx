@@ -107,9 +107,17 @@ export default function CourierSetup({ initial }: { initial: Cred[] }) {
 
       <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6">
         <h2 className="text-slate-900 font-semibold mb-1">{provider} Credentials</h2>
-        <p className="text-xs text-slate-500 mb-5">
-          আপনার dashboard থেকে API Key / Secret নিয়ে এখানে save করুন।
-        </p>
+        {provider === "STEADFAST" ? (
+          <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2.5 mb-5">
+            ✓ Steadfast-এর জন্য আলাদা setup লাগবে না — admin-এর merchant account
+            দিয়ে স্বয়ংক্রিয় booking হয়। চাইলে নিচে নিজের key বসিয়ে override
+            করতে পারেন।
+          </p>
+        ) : (
+          <p className="text-xs text-slate-500 mb-5">
+            আপনার dashboard থেকে API Key / Secret নিয়ে এখানে save করুন।
+          </p>
+        )}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">

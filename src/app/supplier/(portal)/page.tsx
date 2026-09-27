@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatBDT, formatDate } from "@/lib/utils";
 import { getSupplierBalance } from "@/lib/supplier";
+import TelegramSetup from "@/components/supplier/TelegramSetup";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function SupplierDashboard() {
   const session = await auth();
   const supplierId = (session?.user as { supplierId?: string }).supplierId!;
 
-  const [pending, inProgress, delivered, recent, balance] = await Promise.all([
+  const [pending, inProgress, delivered, recent, balance, me] = await Promise.all([
     prisma.supplierOrder.count({ where: { supplierId, status: "PENDING" } }),
     prisma.supplierOrder.count({
       where: { supplierId, status: { in: ["ACCEPTED", "PACKED", "SHIPPED"] } },
@@ -43,6 +44,7 @@ export default async function SupplierDashboard() {
       include: { order: { include: { items: true } } },
     }),
     getSupplierBalance(supplierId),
+    prisma.supplier.findUnique({ where: { id: supplierId }, select: { telegramChatId: true } }),
   ]);
 
   const stats = [
@@ -71,6 +73,8 @@ export default async function SupplierDashboard() {
           </div>
         ))}
       </div>
+
+      <TelegramSetup current={me?.telegramChatId ?? null} />
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">

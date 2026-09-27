@@ -138,6 +138,7 @@ export default async function OrdersPage({
           itemCount: o.items.reduce((s, i) => s + i.quantity, 0),
           createdAt: o.createdAt.toISOString(),
           forwardedTo: o.supplierOrder?.supplier?.name ?? null,
+          forwardCode: o.supplierOrder?.forwardCode ?? null,
         }))}
       />
     </div>

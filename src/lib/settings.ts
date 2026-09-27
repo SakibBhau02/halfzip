@@ -18,6 +18,16 @@ export const SETTING_KEYS = [
   "store_bin",
   "store_vat_registered",
   "invoice_footer",
+  // steadfast courier (global merchant account)
+  "steadfast_api_key",
+  "steadfast_secret_key",
+  "steadfast_base_url",
+  "steadfast_test_mode",
+  // server-side conversions (courier-truth events)
+  "meta_capi_token",
+  "ga4_api_secret",
+  "tiktok_events_token",
+  "conversions_test_mode",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -41,6 +51,14 @@ const DEFAULTS: SettingsMap = {
   store_vat_registered: "false",
   invoice_footer:
     "ধন্যবাদ আমাদের সাথে কেনাকাটার জন্য। পণ্য পছন্দ না হলে ৭ দিনের মধ্যে এক্সচেঞ্জ করা যাবে।",
+  steadfast_api_key: "",
+  steadfast_secret_key: "",
+  steadfast_base_url: "https://portal.packzy.com/api/v1",
+  steadfast_test_mode: "true",
+  meta_capi_token: "",
+  ga4_api_secret: "",
+  tiktok_events_token: "",
+  conversions_test_mode: "true",
 };
 
 export async function getSettings(): Promise<SettingsMap> {

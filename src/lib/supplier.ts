@@ -118,3 +118,210 @@ export async function getTotalReceivable() {
   }
   return total;
 }
+
+export type RateCardRow = {
+  productId: string;
+  productName: string;
+  /** what the customer pays per piece (retail) */
+  retail: number;
+  /** what the supplier charges per piece (cost) */
+  cost: number;
+  /** reseller profit per piece */
+  perPcMargin: number;
+};
+
+/**
+ * Rate card for a supplier: retail vs cost vs per-piece margin.
+ * Same numbers shown to both admin and supplier so the deal is transparent.
+ */
+export async function getSupplierRateCard(
+  supplierId: string
+): Promise<RateCardRow[]> {
+  const [products, costs] = await Promise.all([
+    prisma.product.findMany({
+      where: { active: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.supplierProductCost.findMany({ where: { supplierId } }),
+  ]);
+  const costByProduct = Object.fromEntries(
+    costs.map((c) => [c.productId, c.costPrice])
+  );
+  return products.map((p) => {
+    const cost = costByProduct[p.id] ?? p.basePrice;
+    return {
+      productId: p.id,
+      productName: p.name,
+      retail: p.basePrice,
+      cost,
+      perPcMargin: p.basePrice - cost,
+    };
+  });
+}
+
+export type ForwardBreakdown = {
+  /** goods retail (what customer pays for items) */
+  retail: number;
+  /** supplier cost for the goods */
+  cost: number;
+  /** delivery fee charged to customer */
+  delivery: number;
+  /** reseller margin on this forward */
+  margin: number;
+  /** pieces in this forward */
+  pcs: number;
+  /** true once the margin has been credited (delivered) */
+  credited: boolean;
+};
+
+/** Per-forward profit breakdown — identical math for admin & supplier views. */
+export function getForwardBreakdown(f: {
+  subtotal: number;
+  deliveryFee: number;
+  supplierCost: number;
+  pcs: number;
+  credited: boolean;
+}): ForwardBreakdown {
+  return {
+    retail: f.subtotal,
+    cost: f.supplierCost,
+    delivery: f.deliveryFee,
+    margin: f.subtotal - f.supplierCost + f.deliveryFee,
+    pcs: f.pcs,
+    credited: f.credited,
+  };
+}
+
+/* ------------------------- account statement ------------------------- */
+
+export type StatementLine = {
+  id: string;
+  date: Date;
+  kind: "MARGIN" | "PAYMENT" | "ADJUSTMENT";
+  /** order number for margins, payment reference/method for payments */
+  ref: string;
+  note: string;
+  /** COD cash the supplier collected from the customer */
+  collected: number;
+  /** goods cost the supplier keeps */
+  cost: number;
+  /** delivery fee (supplier bears the courier cost) */
+  delivery: number;
+  /** reseller margin earned on this line (+) */
+  margin: number;
+  /** cash the supplier sent to the reseller (+) */
+  paid: number;
+  /** running balance: total margin owed minus total paid */
+  balance: number;
+};
+
+export type SupplierStatement = {
+  lines: StatementLine[];
+  totals: {
+    collected: number;
+    cost: number;
+    delivery: number;
+    marginEarned: number;
+    paid: number;
+    balanceDue: number;
+    orderCount: number;
+    paymentCount: number;
+  };
+};
+
+/**
+ * Professional account statement between ONE supplier and the reseller.
+ * Single source of truth — admin sees it as "receivable", the supplier
+ * sees the SAME numbers as "payable". Running balance on every line.
+ */
+export async function getSupplierStatement(
+  supplierId: string
+): Promise<SupplierStatement> {
+  const entries = await prisma.supplierLedger.findMany({
+    where: { supplierId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+
+  const orderIds = entries
+    .map((e) => e.orderId)
+    .filter((id): id is string => !!id);
+  const orders = await prisma.order.findMany({
+    where: { id: { in: orderIds } },
+    select: {
+      id: true,
+      orderNumber: true,
+      subtotal: true,
+      supplierCost: true,
+      deliveryFee: true,
+      total: true,
+    },
+  });
+  const orderById = Object.fromEntries(orders.map((o) => [o.id, o]));
+
+  const lines: StatementLine[] = [];
+  let running = 0;
+  for (const e of entries) {
+    const o = e.orderId ? orderById[e.orderId] : undefined;
+    if (e.type === "EARNING") {
+      const collected = o?.total ?? 0;
+      const cost = o?.supplierCost ?? 0;
+      const delivery = o?.deliveryFee ?? 0;
+      running += e.amount;
+      lines.push({
+        id: e.id,
+        date: e.createdAt,
+        kind: "MARGIN",
+        ref: o?.orderNumber ?? "—",
+        note: e.note ?? "Delivered order margin",
+        collected,
+        cost,
+        delivery,
+        margin: e.amount,
+        paid: 0,
+        balance: running,
+      });
+    } else if (e.type === "WITHDRAWAL") {
+      running -= e.amount;
+      lines.push({
+        id: e.id,
+        date: e.createdAt,
+        kind: "PAYMENT",
+        ref: e.note ?? "Payment",
+        note: `Paid to reseller (${e.actor ?? "supplier"})`,
+        collected: 0,
+        cost: 0,
+        delivery: 0,
+        margin: 0,
+        paid: e.amount,
+        balance: running,
+      });
+    } else {
+      running += e.amount;
+      lines.push({
+        id: e.id,
+        date: e.createdAt,
+        kind: "ADJUSTMENT",
+        ref: o?.orderNumber ?? "Adjustment",
+        note: e.note ?? "Adjustment",
+        collected: 0,
+        cost: 0,
+        delivery: 0,
+        margin: e.amount,
+        paid: 0,
+        balance: running,
+      });
+    }
+  }
+
+  const totals = {
+    collected: lines.reduce((s, l) => s + l.collected, 0),
+    cost: lines.reduce((s, l) => s + l.cost, 0),
+    delivery: lines.reduce((s, l) => s + l.delivery, 0),
+    marginEarned: lines.reduce((s, l) => s + l.margin, 0),
+    paid: lines.reduce((s, l) => s + l.paid, 0),
+    balanceDue: running,
+    orderCount: lines.filter((l) => l.kind === "MARGIN").length,
+    paymentCount: lines.filter((l) => l.kind === "PAYMENT").length,
+  };
+  return { lines: lines.reverse(), totals };
+}

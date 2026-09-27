@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { SettingsMap } from "@/lib/settings";
-import { saveAllSettings, testTelegram } from "@/app/admin/(dashboard)/settings/actions";
+import { saveAllSettings, testTelegram, testSteadfastConnection, testConversionDestination } from "@/app/admin/(dashboard)/settings/actions";
 
 function Card({
   title,
@@ -57,8 +57,14 @@ export default function SettingsForm({ initial }: { initial: SettingsMap }) {
   const [msg, setMsg] = useState("");
   const [tgMsg, setTgMsg] = useState("");
   const [testing, setTesting] = useState(false);
+  const [sfMsg, setSfMsg] = useState("");
+  const [sfTesting, setSfTesting] = useState(false);
+  const [convMsg, setConvMsg] = useState<Record<string, string>>({});
+  const [convTesting, setConvTesting] = useState<string | null>(null);
 
   const set = (k: string) => (v: string) => setS({ ...s, [k]: v });
+  const sfTestMode = s.steadfast_test_mode !== "false";
+  const convTestMode = s.conversions_test_mode !== "false";
 
   const save = () =>
     start(async () => {
@@ -75,6 +81,42 @@ export default function SettingsForm({ initial }: { initial: SettingsMap }) {
     const res = await testTelegram();
     setTgMsg(res.ok ? "✅ টেস্ট মেসেজ পাঠানো হয়েছে!" : res.error ?? "Failed");
     setTesting(false);
+  };
+
+  const testSteadfast = async () => {
+    setSfTesting(true);
+    setSfMsg("");
+    await saveAllSettings(s);
+    const res = await testSteadfastConnection({
+      apiKey: s.steadfast_api_key ?? "",
+      secretKey: s.steadfast_secret_key ?? "",
+      baseUrl: s.steadfast_base_url ?? "",
+      testMode: sfTestMode,
+    });
+    setSfMsg(res.ok ? res.message ?? "Connected!" : res.error ?? "Failed");
+    setSfTesting(false);
+  };
+
+  const testConv = async (dest: "META" | "GA4" | "TIKTOK") => {
+    setConvTesting(dest);
+    setConvMsg((m) => ({ ...m, [dest]: "" }));
+    await saveAllSettings(s);
+    const pixelId =
+      dest === "META" ? (s.meta_pixel_id ?? "")
+      : dest === "GA4" ? (s.ga4_id ?? "")
+      : (s.tiktok_pixel_id ?? "");
+    const token =
+      dest === "META" ? (s.meta_capi_token ?? "")
+      : dest === "GA4" ? (s.ga4_api_secret ?? "")
+      : (s.tiktok_events_token ?? "");
+    const res = await testConversionDestination({
+      dest,
+      pixelId,
+      token,
+      testMode: convTestMode,
+    });
+    setConvMsg((m) => ({ ...m, [dest]: res.ok ? (res.message ?? "OK") : (res.error ?? "Failed") }));
+    setConvTesting(null);
   };
 
   return (
@@ -136,6 +178,118 @@ export default function SettingsForm({ initial }: { initial: SettingsMap }) {
           />
         </Card>
       </div>
+
+      {/* Steadfast Courier */}
+      <Card
+        title="🚚 Steadfast Courier (Merchant Account)"
+        desc="আপনার Steadfast merchant credential বসান — supplier কুরিয়ার বুক করলে স্বয়ংক্রিয়ভাবে consignment তৈরি হবে।"
+      >        <label className="flex items-start gap-2 text-sm text-slate-700 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">
+          <input
+            type="checkbox"
+            checked={sfTestMode}
+            onChange={(e) =>
+              setS({ ...s, steadfast_test_mode: e.target.checked ? "true" : "false" })
+            }
+            className="w-4 h-4 mt-0.5 accent-[#c8a24a]"
+          />
+          <span>
+            <b>Test Mode (mock)</b> — চালু থাকলে real API-তে কোনো call যাবে না;
+            fake consignment number দিয়ে পুরো flow (book → label → sync → delivered)
+            test করা যাবে। Live করতে চাইলে OFF করে credential বসান।
+          </span>
+        </label>
+        <div className="grid md:grid-cols-2 gap-4">
+          <Field
+            label="Steadfast Api-Key"
+            hint="Steadfast panel → API থেকে Api-Key কপি করুন"
+            value={s.steadfast_api_key ?? ""}
+            onChange={set("steadfast_api_key")}
+            placeholder="xxxxxxxxxxxxxxxx"
+          />
+          <Field
+            label="Steadfast Secret-Key"
+            hint="একই জায়গা থেকে Secret-Key কপি করুন"
+            value={s.steadfast_secret_key ?? ""}
+            onChange={set("steadfast_secret_key")}
+            placeholder="xxxxxxxxxxxxxxxx"
+          />
+        </div>
+        <Field
+          label="API Base URL"
+          hint="সাধারণত বদলানোর দরকার নেই"
+          value={s.steadfast_base_url ?? ""}
+          onChange={set("steadfast_base_url")}
+          placeholder="https://portal.packzy.com/api/v1"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={testSteadfast}
+            disabled={sfTesting}
+            className="bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
+          >
+            {sfTesting ? "Testing…" : "Test Connection"}
+          </button>
+          {sfMsg && <span className="text-sm text-slate-600">{sfMsg}</span>}
+        </div>
+      </Card>
+
+      {/* Server-side Conversions (courier truth) */}
+      <Card
+        title="📡 Server Conversions — Courier Truth"
+        desc="Order করলেই Purchase যাবে না। Courier delivered বললে server থেকে আসল Purchase যাবে (Meta CAPI + GA4 + TikTok)। Token ছাড়া Test Mode-এ mock fire হয়।"
+      >
+        <label className="flex items-start gap-2 text-sm text-slate-700 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">
+          <input
+            type="checkbox"
+            checked={convTestMode}
+            onChange={(e) =>
+              setS({ ...s, conversions_test_mode: e.target.checked ? "true" : "false" })
+            }
+            className="w-4 h-4 mt-0.5 accent-[#c8a24a]"
+          />
+          <span>
+            <b>Test Mode (mock)</b> — চালু থাকলে কোনো platform-এ real call যাবে না;
+            event গুলো শুধু DB-তে log হবে। Token বসিয়ে OFF করলে live fire হবে।
+          </span>
+        </label>
+        <div className="grid md:grid-cols-2 gap-4">
+          <Field
+            label="Meta CAPI Access Token"
+            hint="Events Manager → Settings → Conversions API → Generate access token"
+            value={s.meta_capi_token ?? ""}
+            onChange={set("meta_capi_token")}
+            placeholder="EAAxxxxxxxx…"
+          />
+          <Field
+            label="GA4 Measurement Protocol Secret"
+            hint="GA4 → Admin → Data Streams → Measurement Protocol → Create"
+            value={s.ga4_api_secret ?? ""}
+            onChange={set("ga4_api_secret")}
+            placeholder="xxxxxxxxxxxx"
+          />
+        </div>
+        <Field
+          label="TikTok Events API Token"
+          hint="TikTok Events Manager → Settings → Generate Access Token"
+          value={s.tiktok_events_token ?? ""}
+          onChange={set("tiktok_events_token")}
+          placeholder="xxxxxxxxxxxxxxxx"
+        />
+        <div className="space-y-2">
+          {(["META", "GA4", "TIKTOK"] as const).map((d) => (
+            <div key={d} className="flex items-center gap-3">
+              <button
+                onClick={() => testConv(d)}
+                disabled={convTesting !== null}
+                className="bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-800 transition disabled:opacity-50 min-w-[170px]"
+              >
+                {convTesting === d ? "Testing…" : `Test ${d === "GA4" ? "GA4" : d === "META" ? "Meta CAPI" : "TikTok"}`}
+              </button>
+              {convMsg[d] && <span className="text-sm text-slate-600">{convMsg[d]}</span>}
+            </div>
+          ))}
+        </div>
+      </Card>
 
       {/* Analytics */}
       <Card

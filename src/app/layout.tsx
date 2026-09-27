@@ -1,5 +1,21 @@
 import type { Metadata } from "next";
+import { Poppins, Noto_Sans_Bengali } from "next/font/google";
 import "./globals.css";
+
+// Self-hosted via next/font — no render-blocking Google Fonts request (LCP win)
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const notoBengali = Noto_Sans_Bengali({
+  subsets: ["bengali", "latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Half Zipper Sweatshirt — Premium Winter Wear in Bangladesh",
@@ -26,19 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Noto+Sans+Bengali:wght@300;400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" className={`${poppins.variable} ${notoBengali.variable}`}>
       <body>{children}</body>
     </html>
   );

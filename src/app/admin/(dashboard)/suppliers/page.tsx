@@ -24,6 +24,7 @@ export default async function SuppliersPage() {
         company: s.company ?? "",
         phone: s.phone,
         email: s.email ?? "",
+        telegram: s.telegramChatId ?? "",
         active: s.active,
         forwards: s._count.forwards,
         costPrice: s.costPrices.find((c) => c.productId === product?.id)?.costPrice ?? 0,

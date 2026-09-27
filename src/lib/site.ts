@@ -70,3 +70,13 @@ export const fabricSpecs = [
   { label: "সিজন", value: "Winter / Late Autumn" },
   { label: "মেজারমেন্ট", value: "M / L / XL / XXL" },
 ];
+
+/**
+ * Canonical site URL for server-side use (callbacks, event_source_url…).
+ * Priority: explicit NEXTAUTH_URL → Vercel deployment URL → local dev.
+ */
+export function getSiteUrl(): string {
+  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3100";
+}

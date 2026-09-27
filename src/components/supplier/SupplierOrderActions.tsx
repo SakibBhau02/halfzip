@@ -32,12 +32,14 @@ export default function SupplierOrderActions({
   status,
   credentials,
   trackingId,
+  consignmentId,
   courierProvider,
 }: {
   orderId: string;
   status: SupplierOrderStatus;
   credentials: { provider: CourierProvider; active: boolean }[];
   trackingId: string | null;
+  consignmentId: string | null;
   courierProvider: CourierProvider | null;
 }) {
   const router = useRouter();
@@ -74,6 +76,9 @@ export default function SupplierOrderActions({
     });
 
   const hasProviderCred = credentials.some((c) => c.provider === provider);
+  // Steadfast auto-books via the admin merchant account — no manual ID needed
+  const autoBook = provider === "STEADFAST";
+  const needManualId = !autoBook && !hasProviderCred;
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
@@ -145,7 +150,7 @@ export default function SupplierOrderActions({
 
       {/* book courier */}
       {(status === "ACCEPTED" || status === "PACKED") && (
-        <div className="border-t border-slate-100 pt-4 space-y-3">
+        <div id="courier" className="border-t border-slate-100 pt-4 space-y-3 scroll-mt-24">
           <p className="text-sm font-medium text-slate-900">Book Courier</p>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Provider</label>
@@ -161,7 +166,12 @@ export default function SupplierOrderActions({
               ))}
             </select>
           </div>
-          {!hasProviderCred && (
+          {!needManualId && autoBook && (
+            <p className="text-[11px] text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+              ✓ Steadfast merchant account দিয়ে স্বয়ংক্রিয় consignment তৈরি হবে।
+            </p>
+          )}
+          {needManualId && (
             <div>
               <label className="block text-xs text-slate-500 mb-1">
                 Manual Tracking ID
@@ -182,17 +192,31 @@ export default function SupplierOrderActions({
             disabled={pending}
             className="w-full bg-slate-900 text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
           >
-            🚚 Book & Mark Shipped
+            {autoBook ? "🚚 Auto-Book Steadfast & Ship" : "🚚 Book & Mark Shipped"}
           </button>
         </div>
       )}
 
       {trackingId && (
-        <div className="bg-slate-50 rounded-lg p-3 text-sm">
+        <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-1">
           <p className="text-xs text-slate-500">Tracking</p>
           <p className="font-mono text-slate-900">{trackingId}</p>
+          {consignmentId && (
+            <p className="text-xs text-slate-500">
+              Consignment: <span className="font-mono text-slate-900">{consignmentId}</span>
+            </p>
+          )}
           {courierProvider && (
-            <p className="text-xs text-slate-500 mt-1">via {courierProvider}</p>
+            <p className="text-xs text-slate-500">via {courierProvider}</p>
+          )}
+          {(status === "SHIPPED" || status === "DELIVERED") && (
+            <a
+              href={`/supplier/orders/${orderId}/label`}
+              target="_blank"
+              className="block text-center mt-2 bg-white border border-slate-200 text-slate-900 text-sm font-medium py-2 rounded-lg hover:border-amber-400 transition"
+            >
+              🖨️ Print Shipping Label
+            </a>
           )}
         </div>
       )}

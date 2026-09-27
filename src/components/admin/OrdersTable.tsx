@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { formatBDT, formatDate } from "@/lib/utils";
 import { STATUS_LABELS, STATUS_STYLES } from "@/lib/order-status";
 import type { OrderStatus } from "@prisma/client";
-import OrderDrawer from "./OrderDrawer";
 import ForwardModal from "./ForwardModal";
 
 export type RowOrder = {
@@ -22,11 +21,11 @@ export type RowOrder = {
   itemCount: number;
   createdAt: string;
   forwardedTo: string | null;
+  forwardCode: string | null;
 };
 
 export default function OrdersTable({ orders }: { orders: RowOrder[] }) {
   const router = useRouter();
-  const [openId, setOpenId] = useState<string | null>(null);
   const [forwardId, setForwardId] = useState<string | null>(null);
   const [, start] = useTransition();
 
@@ -70,12 +69,12 @@ export default function OrdersTable({ orders }: { orders: RowOrder[] }) {
                   key={o.id}
                   className="hover:bg-amber-50/50 transition cursor-pointer"
                 >
-                  <td className="px-4 py-3" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     <span className="text-amber-700 hover:underline font-medium font-mono">
                       {o.orderNumber}
                     </span>
                   </td>
-                  <td className="px-4 py-3" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     <p className="text-slate-900 font-medium">{o.shipName}</p>
                     <a
                       href={`tel:${o.shipPhone}`}
@@ -85,18 +84,18 @@ export default function OrdersTable({ orders }: { orders: RowOrder[] }) {
                       {o.shipPhone}
                     </a>
                   </td>
-                  <td className="px-4 py-3 text-slate-600" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3 text-slate-600" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     {o.shipDistrict ?? "—"}
                   </td>
-                  <td className="px-4 py-3" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     <span className="text-xs bg-slate-100 px-2 py-1 rounded-full text-slate-600">
                       {o.itemCount}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-display text-slate-900 whitespace-nowrap" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3 font-display text-slate-900 whitespace-nowrap" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     {formatBDT(o.total)}
                   </td>
-                  <td className="px-4 py-3" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     <span className="text-xs text-slate-500">{o.paymentMethod}</span>
                     <span
                       className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${
@@ -108,7 +107,7 @@ export default function OrdersTable({ orders }: { orders: RowOrder[] }) {
                       {o.paymentStatus}
                     </span>
                   </td>
-                  <td className="px-4 py-3" onClick={() => setOpenId(o.id)}>
+                  <td className="px-4 py-3" onClick={() => router.push(`/admin/orders/${o.id}`)}>
                     <span
                       className={`text-[11px] font-medium px-2 py-1 rounded-full ring-1 whitespace-nowrap ${
                         STATUS_STYLES[o.status]
@@ -119,9 +118,16 @@ export default function OrdersTable({ orders }: { orders: RowOrder[] }) {
                   </td>
                   <td className="px-4 py-3">
                     {o.forwardedTo ? (
-                      <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">
-                        ✓ {o.forwardedTo}
-                      </span>
+                      <div className="whitespace-nowrap">
+                        <p className="text-xs text-emerald-600 font-medium">
+                          ✓ {o.forwardedTo}
+                        </p>
+                        {o.forwardCode && (
+                          <p className="text-[11px] font-mono text-slate-500">
+                            {o.forwardCode}
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-slate-400">—</span>
                     )}
@@ -148,10 +154,6 @@ export default function OrdersTable({ orders }: { orders: RowOrder[] }) {
           </table>
         </div>
       </div>
-
-      {openId && (
-        <OrderDrawer orderId={openId} onClose={() => setOpenId(null)} />
-      )}
 
       {forwardId && (
         <ForwardModal

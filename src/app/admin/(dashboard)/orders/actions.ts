@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { canTransition } from "@/lib/order-status";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
-type Result = { ok: boolean; error?: string };
+type Result = { ok: boolean; error?: string; message?: string };
 
 async function requireAdmin() {
   const session = await auth();
@@ -73,6 +73,15 @@ export async function updateOrderStatus(
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
   revalidatePath("/admin");
+
+  // Courier-truth conversions on manual status changes too.
+  if (to === "DELIVERED") {
+    const { fireDeliveredConversions } = await import("@/lib/conversions");
+    await fireDeliveredConversions(orderId, order.total);
+  } else if (to === "RETURNED" || to === "CANCELLED") {
+    const { fireCancelledConversions } = await import("@/lib/conversions");
+    await fireCancelledConversions(orderId);
+  }
   return { ok: true };
 }
 
@@ -487,8 +496,7 @@ export async function recordPrint(orderId: string): Promise<Result> {
   return { ok: true };
 }
 
-/** Assign a sequential invoice number if not present. */
-export async function ensureInvoiceNumber(orderId: string): Promise<Result> {
+/** Assign a sequential invoice number if not present. */export async function ensureInvoiceNumber(orderId: string): Promise<Result> {
   try {
     await requireAdmin();
   } catch {
@@ -506,4 +514,26 @@ export async function ensureInvoiceNumber(orderId: string): Promise<Result> {
   await prisma.order.update({ where: { id: orderId }, data: { invoiceNumber } });
   revalidatePath(`/admin/orders/${orderId}`);
   return { ok: true };
+}
+
+/* ------------------------------ courier sync ------------------------------ */
+
+/**
+ * Admin pulls the latest Steadfast status for an order's forward.
+ * Supplier status changes + courier updates all become visible here.
+ */
+export async function syncOrderCourierStatus(
+  orderId: string
+): Promise<Result> {
+  let actor = "admin";
+  try {
+    actor = await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const so = await prisma.supplierOrder.findUnique({ where: { orderId } });
+  if (!so) return { ok: false, error: "এই order supplier-এর কাছে forward করা হয়নি।" };
+  const { syncForwardCourierStatus } = await import("@/lib/courier-sync");
+  const res = await syncForwardCourierStatus(so.id, actor);
+  return { ok: res.ok, error: res.error, message: res.message };
 }

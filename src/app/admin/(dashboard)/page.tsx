@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatBDT, formatDate } from "@/lib/utils";
 import { STATUS_LABELS, STATUS_STYLES } from "@/lib/order-status";
+import { getTotalReceivable } from "@/lib/supplier";
 
 export const dynamic = "force-dynamic";
 
@@ -120,7 +121,7 @@ export default async function DashboardPage() {
     returned30,
     cancelled30,
     total30,
-    receivables,
+    supplierOwesMe,
     revenueAgg,
     recent,
     lowStock,
@@ -134,10 +135,7 @@ export default async function DashboardPage() {
     prisma.order.count({ where: { status: "RETURNED", createdAt: { gte: d30 } } }),
     prisma.order.count({ where: { status: "CANCELLED", createdAt: { gte: d30 } } }),
     prisma.order.count({ where: { createdAt: { gte: d30 } } }),
-    prisma.order.aggregate({
-      _sum: { total: true },
-      where: { status: "DELIVERED", paymentStatus: "UNPAID" },
-    }),
+    getTotalReceivable(),
     prisma.order.aggregate({
       _sum: { total: true },
       _avg: { total: true },
@@ -235,9 +233,9 @@ export default async function DashboardPage() {
           tone="gold"
         />
         <Stat
-          label="COD Receivables"
-          value={formatBDT(receivables._sum.total ?? 0)}
-          sub="delivered, unpaid"
+          label="Supplier Owes Me"
+          value={formatBDT(supplierOwesMe)}
+          sub="reseller margin receivable"
           icon="wallet"
           tone="amber"
         />

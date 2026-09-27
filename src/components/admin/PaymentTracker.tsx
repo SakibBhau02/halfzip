@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { recordCodCollected, recordAdvancePaid } from "@/app/admin/(dashboard)/orders/actions";
+import { recordCodCollected } from "@/app/admin/(dashboard)/orders/actions";
 
 export default function PaymentTracker({
   orderId,
@@ -19,20 +19,11 @@ export default function PaymentTracker({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [adv, setAdv] = useState((advancePaid / 100).toString());
   const [col, setCol] = useState((codCollected / 100).toString());
   const [msg, setMsg] = useState("");
 
   const collectible = total - advancePaid;
   const shortfall = codCollected > 0 ? codCollected - collectible : 0;
-
-  const saveAdv = () =>
-    start(async () => {
-      const res = await recordAdvancePaid(orderId, Math.round(Number(adv) * 100));
-      setMsg(res.ok ? "Saved ✓" : res.error ?? "Failed");
-      setTimeout(() => setMsg(""), 2000);
-      router.refresh();
-    });
 
   const saveCol = () =>
     start(async () => {
@@ -62,28 +53,10 @@ export default function PaymentTracker({
       </div>
 
       <div className="space-y-3">
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">
-            Advance Paid (৳)
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={adv}
-              onChange={(e) => setAdv(e.target.value)}
-              className={inputCls}
-              placeholder="0"
-            />
-            <button
-              onClick={saveAdv}
-              disabled={pending}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-4 rounded-lg transition disabled:opacity-50"
-            >
-              Save
-            </button>
-          </div>
+        <div className="bg-slate-50 rounded-lg px-3 py-2.5 text-xs text-slate-500">
+          💵 সব order COD — অগ্রিম পেমেন্ট নেই। Customer পুরো টাকা ডেলিভারিতে দেয়,
+          supplier তোলে।
         </div>
-
         <div>
           <label className="block text-xs text-slate-500 mb-1">
             COD Collected (৳)

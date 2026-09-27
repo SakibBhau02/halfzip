@@ -15,12 +15,18 @@ const Body = z.object({
   name: z.string().min(2, "নাম দিন").max(120),
   phone: z
     .string()
-    .regex(/^01[3-9]\d{8}$/, "সঠিক মোবাইল নাম্বার দিন (11 digits)"),
+    .min(11, "সঠিক মোবাইল নাম্বার দিন (11 digits)")
+    .max(20, "সঠিক মোবাইল নাম্বার দিন (11 digits)"),
   address: z.string().min(5, "সম্পূর্ণ ঠিকানা দিন").max(500),
   district: z.string().max(80).optional().default(""),
   zone: z.enum(["inside", "outside"]),
   notes: z.string().max(500).optional().default(""),
   items: z.array(Item).min(1, "কমপক্ষে একটি product নির্বাচন করুন").max(3),
+  // ad-attribution snapshot (for server-side courier-truth conversions)
+  fbp: z.string().max(200).optional().default(""),
+  fbc: z.string().max(200).optional().default(""),
+  ttclid: z.string().max(200).optional().default(""),
+  gaClientId: z.string().max(100).optional().default(""),
 });
 
 export async function POST(req: NextRequest) {
@@ -39,6 +45,41 @@ export async function POST(req: NextRequest) {
     );
   }
   const d = parsed.data;
+
+  // Normalize BD mobile server-side too (never trust the client):
+  // strip junk, 8801XXXXXXXXX → 01XXXXXXXXX, strict re-check.
+  let digits = d.phone.replace(/\D/g, "");
+  if (digits.startsWith("880") && digits.length === 13) digits = "0" + digits.slice(3);
+  if (digits.startsWith("00880") && digits.length === 15) digits = "0" + digits.slice(5);
+  if (!/^01[3-9]\d{8}$/.test(digits)) {
+    return NextResponse.json(
+      { error: "সঠিক বাংলাদেশি মোবাইল নাম্বার দিন (01XXXXXXXXX)।" },
+      { status: 422 }
+    );
+  }
+  const phone = digits;
+
+  // One order per phone per 24 hours (cancelled orders don't count)
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const recent = await prisma.order.findFirst({
+    where: {
+      shipPhone: phone,
+      createdAt: { gte: dayAgo },
+      status: { not: "CANCELLED" },
+    },
+    select: { id: true, orderNumber: true, createdAt: true },
+  });
+  if (recent) {
+    return NextResponse.json(
+      {
+        error:
+          "এই নম্বরে ২৪ ঘণ্টার মধ্যে ইতিমধ্যে একটি অর্ডার আছে। আরেকটি করতে চাইলে WhatsApp-এ মেসেজ করুন — আমরা করে দিচ্ছি!",
+        code: "DUPLICATE_24H",
+        orderNumber: recent.orderNumber,
+      },
+      { status: 409 }
+    );
+  }
 
   const product = await prisma.product.findFirst({
     where: { active: true },
@@ -101,14 +142,14 @@ export async function POST(req: NextRequest) {
   try {
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.upsert({
-        where: { phone: d.phone },
+        where: { phone },
         update: {
           name: d.name,
           address: d.address,
           district: d.district || null,
         },
         create: {
-          phone: d.phone,
+          phone,
           name: d.name,
           address: d.address,
           district: d.district || null,
@@ -133,10 +174,18 @@ export async function POST(req: NextRequest) {
           deliveryFee,
           total,
           shipName: d.name,
-          shipPhone: d.phone,
+          shipPhone: phone,
           shipAddress: d.address,
           shipDistrict: d.district || null,
           notes: d.notes || null,
+          // attribution snapshot for server conversions
+          fbp: d.fbp || null,
+          fbc: d.fbc || null,
+          ttclid: d.ttclid || null,
+          gaClientId: d.gaClientId || null,
+          clientIp:
+            req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          clientUa: req.headers.get("user-agent")?.slice(0, 500) ?? null,
           items: {
             create: resolved.map(({ variant }) => ({
               variantId: variant.id,
@@ -167,7 +216,7 @@ export async function POST(req: NextRequest) {
       formatOrderTelegram({
         orderNumber: result.orderNumber,
         name: d.name,
-        phone: d.phone,
+        phone,
         address: d.address,
         district: d.district,
         color: resolved.map((r) => `${r.variant.color}/${r.variant.size}`).join(", "),

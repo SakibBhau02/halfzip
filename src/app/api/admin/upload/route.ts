@@ -38,9 +38,26 @@ export async function POST(req: NextRequest) {
 
   const ext = file.type.split("/")[1].replace("jpeg", "jpg");
   const name = `${crypto.randomUUID()}.${ext}`;
+  const buf = Buffer.from(await file.arrayBuffer());
+
+  // Prefer S3 when configured, else local public/uploads
+  const { isS3Configured, s3Upload } = await import(
+    "@/lib/storage"
+  );
+  if (isS3Configured()) {
+    try {
+      const key = `uploads/${name}`;
+      await s3Upload(key, buf, file.type);
+      // Store the same-origin proxy URL (bucket is private)
+      return NextResponse.json({ url: `/api/img/${key}`, key });
+    } catch (e) {
+      console.error("S3 upload failed, falling back to local:", e);
+    }
+  }
+
   const dir = path.join(process.cwd(), "public", "uploads");
   await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, name), Buffer.from(await file.arrayBuffer()));
+  await writeFile(path.join(dir, name), buf);
 
   return NextResponse.json({ url: `/uploads/${name}` });
 }

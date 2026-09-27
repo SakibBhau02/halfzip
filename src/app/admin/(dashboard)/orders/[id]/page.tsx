@@ -16,6 +16,8 @@ import OrderEdit from "@/components/admin/OrderEdit";
 import PaymentTracker from "@/components/admin/PaymentTracker";
 import InvoiceActions from "@/components/admin/InvoiceActions";
 import Communication from "@/components/admin/Communication";
+import CourierSyncButton from "@/components/CourierSyncButton";
+import { steadfastStatusBn } from "@/lib/steadfast";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,8 @@ export default async function OrderDetailPage({
       items: true,
       statusHistory: { orderBy: { createdAt: "asc" } },
       auditLogs: { orderBy: { createdAt: "desc" } },
+      conversions: { orderBy: { createdAt: "desc" } },
+      supplierOrder: { include: { supplier: true } },
     },
   });
   if (!order) notFound();
@@ -205,8 +209,7 @@ export default async function OrderDetailPage({
           </div>
 
           {/* audit log */}
-          {order.auditLogs.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          {order.auditLogs.length > 0 && (            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100">
                 <h2 className="text-slate-900 font-semibold">Audit Log</h2>
               </div>
@@ -232,12 +235,155 @@ export default async function OrderDetailPage({
             </div>
           )}
 
+          {/* server conversion fires (courier truth) */}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="text-slate-900 font-semibold">📡 Ad Conversions</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Courier delivered বললেই Purchase যায় — তার আগে কিছু যায় না।
+              </p>
+            </div>
+            {order.conversions.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-slate-500">
+                এখনো কোনো conversion fire হয়নি। Delivered হলে Meta / GA4 / TikTok-এ
+                Purchase যাবে।
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 text-sm">
+                {order.conversions.map((c) => (
+                  <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-slate-900 font-medium">
+                        {c.destination} · {c.eventName}
+                        {c.testMode && (
+                          <span className="ml-2 text-[10px] font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">
+                            TEST
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5 truncate">
+                        {formatDate(c.createdAt)}
+                        {c.detail ? ` · ${c.detail}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-slate-900 font-medium">
+                        {formatBDT(c.value)}
+                      </p>
+                      <span
+                        className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                          c.status === "SENT"
+                            ? "bg-emerald-50 text-emerald-600"
+                            : c.status === "FAILED"
+                              ? "bg-rose-50 text-rose-600"
+                              : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <OrderNotes orderId={order.id} initial={order.notes ?? ""} />
         </div>
 
         {/* RIGHT */}
         <div className="space-y-6">
           <OrderActions orderId={order.id} nextStatuses={nextStatuses} />
+
+          {/* supplier forward */}
+          {order.supplierOrder && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <h2 className="text-slate-900 font-semibold mb-3">
+                Supplier Forward
+              </h2>
+              {order.supplierOrder.forwardCode && (
+                <div className="bg-amber-50 border border-dashed border-amber-300 rounded-lg px-3 py-2.5 text-center mb-3">
+                  <p className="text-[11px] text-slate-500">Forward Code</p>
+                  <p className="font-mono font-bold tracking-widest text-slate-900">
+                    {order.supplierOrder.forwardCode}
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Supplier</span>
+                  <span className="text-slate-900 font-medium">
+                    {order.supplierOrder.supplier.name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Supplier Status</span>
+                  <span className="text-slate-900 font-medium">
+                    {order.supplierOrder.status}
+                  </span>
+                </div>
+                {/* supplier progress timestamps — every change visible */}
+                <div className="pt-1 space-y-1 text-xs">
+                  {(
+                    [
+                      ["Accepted", order.supplierOrder.acceptedAt],
+                      ["Shipped", order.supplierOrder.shippedAt],
+                      ["Delivered", order.supplierOrder.deliveredAt],
+                    ] as [string, Date | null][]
+                  ).map(
+                    ([label, at]) =>
+                      at ? (
+                        <div key={label} className="flex justify-between">
+                          <span className="text-slate-400">✓ {label}</span>
+                          <span className="text-slate-500">{formatDate(at)}</span>
+                        </div>
+                      ) : null
+                  )}
+                </div>
+                {order.supplierOrder.courierProvider && (
+                  <div className="pt-2 mt-1 border-t border-slate-100 space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Courier</span>
+                      <span className="text-slate-900">
+                        {order.supplierOrder.courierProvider}
+                        {order.supplierOrder.trackingId
+                          ? ` · ${order.supplierOrder.trackingId}`
+                          : ""}
+                      </span>
+                    </div>
+                    {order.supplierOrder.consignmentId && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Consignment</span>
+                        <span className="font-mono text-slate-900">
+                          {order.supplierOrder.consignmentId}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Courier Status</span>
+                      <span className="text-slate-900 font-medium">
+                        {steadfastStatusBn(order.supplierOrder.courierStatus)}
+                      </span>
+                    </div>
+                    {order.supplierOrder.statusCheckedAt && (
+                      <p className="text-[11px] text-slate-400 text-right">
+                        Last checked{" "}
+                        {formatDate(order.supplierOrder.statusCheckedAt)}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-slate-400 pt-1">
+                  Forwarded {formatDate(order.supplierOrder.forwardedAt)}
+                </p>
+              </div>
+              {order.supplierOrder.courierProvider === "STEADFAST" && (
+                <div className="mt-3">
+                  <CourierSyncButton orderId={order.id} variant="admin" />
+                </div>
+              )}
+            </div>
+          )}
 
           <InvoiceActions
             orderId={order.id}
@@ -252,6 +398,58 @@ export default async function OrderDetailPage({
             codCollected={order.codCollected}
             paymentStatus={order.paymentStatus}
           />
+
+          {/* reseller margin breakdown — বিক্রি vs কেনা */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <h2 className="text-slate-900 font-semibold mb-3">
+              My Margin Breakdown
+            </h2>
+            {order.supplierOrder ? (
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">বিক্রি (customer pays goods)</span>
+                  <span className="text-slate-900 font-medium">
+                    {formatBDT(order.subtotal)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">কেনা (supplier cost)</span>
+                  <span className="text-slate-900">
+                    − {formatBDT(order.supplierCost)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ডেলিভারি চার্জ (customer দেয়)</span>
+                  <span className="text-slate-900">
+                    + {formatBDT(order.deliveryFee)}
+                  </span>
+                </div>
+                <div className="flex justify-between pt-2 mt-1 border-t border-slate-100">
+                  <span className="text-slate-900 font-semibold">আমার লাভ</span>
+                  <span className="text-emerald-600 font-bold">
+                    {formatBDT(
+                      order.subtotal - order.supplierCost + order.deliveryFee
+                    )}
+                  </span>
+                </div>
+                <p
+                  className={`text-[11px] pt-1 ${
+                    order.status === "DELIVERED"
+                      ? "text-emerald-600"
+                      : "text-slate-400"
+                  }`}
+                >
+                  {order.status === "DELIVERED"
+                    ? "✓ Delivered — margin আপনার পাওনায় যোগ হয়েছে"
+                    : "⏳ Deliver হলে margin পাওনায় যোগ হবে"}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Supplier-এর কাছে forward করলে এখানে বিক্রি vs কেনা vs লাভ দেখা যাবে।
+              </p>
+            )}
+          </div>
 
           <Communication
             phone={order.shipPhone}
