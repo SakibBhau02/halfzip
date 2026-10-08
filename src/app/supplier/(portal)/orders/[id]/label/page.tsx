@@ -52,7 +52,7 @@ export default async function ShippingLabel({
           {/* header */}
           <div className="flex items-center justify-between px-5 py-3 border-b-2 border-slate-900">
             <div>
-              <p className="font-bold text-lg leading-none">Half Zipper</p>
+              <p className="font-bold text-lg leading-none">Manza BD</p>
               <p className="text-[11px] text-slate-500 mt-1">
                 {so.supplier.company ?? so.supplier.name} · {so.supplier.phone}
               </p>

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import SupplierShell from "@/components/supplier/SupplierShell";
 
-export const metadata = { title: "Supplier — Half Zipper" };
+export const metadata = { title: "Supplier — Manza BD" };
 
 export default async function SupplierLayout({
   children,

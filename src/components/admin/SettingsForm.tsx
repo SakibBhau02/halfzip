@@ -345,7 +345,7 @@ export default function SettingsForm({ initial }: { initial: SettingsMap }) {
             label="Store Name"
             value={s.store_name}
             onChange={set("store_name")}
-            placeholder="Half Zipper"
+            placeholder="Manza BD"
           />
           <Field
             label="Store Phone"

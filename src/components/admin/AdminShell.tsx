@@ -110,7 +110,7 @@ export default function AdminShell({
       >
         <div className="px-6 py-5 border-b border-slate-100">
           <p className="font-display text-lg text-slate-900">
-            HALF<span className="text-gold">·</span>ZIPPER
+            MANZA<span className="text-gold">·</span>BD
           </p>
           <p className="text-[11px] text-slate-600 mt-0.5">Admin Console</p>
         </div>
@@ -172,7 +172,7 @@ export default function AdminShell({
             </svg>
           </button>
           <span className="font-display text-slate-900">
-            HALF<span className="text-gold">·</span>ZIPPER
+            MANZA<span className="text-gold">·</span>BD
           </span>
           <span className="w-9" />
         </header>

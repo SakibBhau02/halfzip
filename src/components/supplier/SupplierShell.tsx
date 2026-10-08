@@ -78,7 +78,7 @@ export default function SupplierShell({
       >
         <div className="px-6 py-5 border-b border-slate-100">
           <p className="font-display text-lg text-slate-900">
-            HALF<span className="text-gold">·</span>ZIPPER
+            MANZA<span className="text-gold">·</span>BD
           </p>
           <p className="text-[11px] text-slate-400 mt-0.5">Supplier Portal</p>
         </div>
@@ -140,7 +140,7 @@ export default function SupplierShell({
             </svg>
           </button>
           <span className="font-display text-slate-900">
-            HALF<span className="text-gold">·</span>ZIPPER
+            MANZA<span className="text-gold">·</span>BD
           </span>
           <span className="w-9" />
         </header>

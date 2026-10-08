@@ -42,7 +42,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <p className="font-display text-2xl text-slate-900">
-            HALF<span className="text-gold">·</span>ZIPPER
+            MANZA<span className="text-gold">·</span>BD
           </p>
           <p className="text-sm text-slate-600 mt-1">Admin Console Login</p>
         </div>

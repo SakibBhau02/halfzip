@@ -28,13 +28,13 @@ export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-/** Generate a human-friendly order number: HZ-20260926-0001 */
+/** Generate a human-friendly order number: MZ-20260926-0001 */
 export function nextOrderNumber(seq: number): string {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(
     d.getDate()
   ).padStart(2, "0")}`;
-  return `HZ-${ymd}-${String(seq).padStart(4, "0")}`;
+  return `MZ-${ymd}-${String(seq).padStart(4, "0")}`;
 }
 
 export { Prisma };

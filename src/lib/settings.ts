@@ -43,7 +43,7 @@ const DEFAULTS: SettingsMap = {
   telegram_chat_id: "",
   telegram_enabled: "false",
   whatsapp_number: "",
-  store_name: "Half Zipper",
+  store_name: "Manza BD",
   store_address: "Dhaka, Bangladesh",
   store_phone: "",
   store_email: "",

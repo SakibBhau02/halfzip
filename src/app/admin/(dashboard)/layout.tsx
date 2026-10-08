@@ -2,7 +2,7 @@
 import { auth } from "@/lib/auth";
 import AdminShell from "@/components/admin/AdminShell";
 
-export const metadata = { title: "Admin — Half Zipper" };
+export const metadata = { title: "Admin — Manza BD" };
 
 export default async function AdminLayout({
   children,

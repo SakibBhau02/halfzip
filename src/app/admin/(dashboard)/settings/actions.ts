@@ -39,7 +39,7 @@ export async function testTelegram(): Promise<{
     return { ok: false, error: "Unauthorized" };
   }
   const sent = await sendTelegram(
-    "✅ <b>Half Zipper</b> — Telegram notification connected successfully!"
+    "✅ <b>Manza BD</b> — Telegram notification connected successfully!"
   );
   return sent
     ? { ok: true }

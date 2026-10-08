@@ -203,7 +203,7 @@ export async function createOrder(
       });
 
       const count = await tx.order.count();
-      const orderNumber = `HZ-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(
+      const orderNumber = `MZ-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(
         count + 1
       ).padStart(4, "0")}`;
       const invCount = await tx.order.count({

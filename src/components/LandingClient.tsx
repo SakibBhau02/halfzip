@@ -723,7 +723,7 @@ export default function LandingClient({
       <header className="sticky top-0 z-40 backdrop-blur-md bg-cream/80 border-b border-black/5">
         <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <span className="font-display text-xl tracking-tight">
-            HALF<span className="text-gold">·</span>ZIPPER
+            MANZA<span className="text-gold">·</span>BD
           </span>
           <nav className="hidden md:flex gap-8 text-sm text-warmgray">
             <a href="#quality" className="hover:text-ink transition">কোয়ালিটি</a>
@@ -744,7 +744,7 @@ export default function LandingClient({
             <p className="uppercase tracking-[0.4em] text-xs text-gold mb-5">
               Winter Collection 2026
             </p>
-            <h1 className="font-display text-4xl sm:text-5xl md:text-6xl leading-[1.05] mb-6 text-balance">
+            <h1 className="font-display font-extrabold text-4xl sm:text-5xl md:text-6xl leading-[1.05] mb-6 text-balance">
               {product.name.split(" ").slice(0, 2).join(" ")}
               <br />
               <span className="italic text-warmgray">
@@ -944,7 +944,7 @@ export default function LandingClient({
 
       <footer className="bg-cream px-4 sm:px-6 py-10 text-center text-sm text-warmgray pb-24">
         <p className="font-display text-lg text-ink mb-2">
-          HALF<span className="text-gold">·</span>ZIPPER
+          MANZA<span className="text-gold">·</span>BD
         </p>
         <p>Premium Winter Wear · Bangladesh</p>
         <a
@@ -954,7 +954,7 @@ export default function LandingClient({
           🔍 অর্ডার ট্র্যাক
         </a>
         <p className="mt-6 text-xs opacity-70">
-          © {new Date().getFullYear()} Half Zipper. All rights reserved.
+          © {new Date().getFullYear()} Manza BD. All rights reserved.
         </p>
       </footer>
 

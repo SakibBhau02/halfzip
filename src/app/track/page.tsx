@@ -1,7 +1,7 @@
 import TrackClient from "@/components/TrackClient";
 
 export const metadata = {
-  title: "অর্ডার ট্র্যাক করুন — Half Zipper",
+  title: "অর্ডার ট্র্যাক করুন — Manza BD",
   description: "আপনার অর্ডার নম্বর ও মোবাইল দিয়ে ডেলিভারি স্ট্যাটাস দেখুন।",
 };
 

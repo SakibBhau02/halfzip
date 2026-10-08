@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------------------
 
 export const site = {
-  brand: "Half Zipper", // no external branding used
-  tagline: "Premium Winter Wear",
-  productName: "Half Zipper Sweatshirt",
+  brand: "Manza BD",
+  tagline: "Premium Winter Jacket",
+  productName: "Hooded Puffer Jacket",
 
   price: 880, // in BDT (৳)
   oldPrice: 1290, // strike-through price to show value
@@ -65,7 +65,7 @@ export const qualityPoints = [
 export const fabricSpecs = [
   { label: "ফ্যাব্রিক", value: "Premium Cotton Blend Fleece" },
   { label: "ইনসুলেশন", value: "Soft Brushed Inner Fleece" },
-  { label: "জিপার", value: "Heavy-duty Metal Half Zipper" },
+  { label: "জিপার", value: "Heavy-duty Metal Zipper" },
   { label: "কলার", value: "Stand Collar / Mock Neck" },
   { label: "সিজন", value: "Winter / Late Autumn" },
   { label: "মেজারমেন্ট", value: "M / L / XL / XXL" },

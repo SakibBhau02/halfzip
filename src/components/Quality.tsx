@@ -90,7 +90,7 @@ export default function Quality() {
             {[
               { label: "ফ্যাব্রিক", value: "Premium Cotton Blend Fleece" },
               { label: "ইনসুলেশন", value: "Soft Brushed Inner Fleece" },
-              { label: "জিপার", value: "Heavy-duty Metal Half Zipper" },
+              { label: "জিপার", value: "Heavy-duty Metal Zipper" },
               { label: "কলার", value: "Stand Collar / Mock Neck" },
               { label: "সিজন", value: "Winter / Late Autumn" },
               { label: "সাইজ", value: "M / L / XL / XXL" },

@@ -375,7 +375,7 @@ export async function saveMyTelegram(chatId: string): Promise<Result> {
     const { sendTelegramTo } = await import("@/lib/telegram");
     const ok = await sendTelegramTo(
       clean,
-      `✅ <b>Half Zipper</b> — Telegram connected!\n\nনতুন forward ও payment request-এর notification এখানে আসবে।`
+      `✅ <b>Manza BD</b> — Telegram connected!\n\nনতুন forward ও payment request-এর notification এখানে আসবে।`
     );
     if (!ok) {
       return {

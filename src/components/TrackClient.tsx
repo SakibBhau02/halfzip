@@ -174,7 +174,7 @@ export default function TrackClient({ initialOrder }: { initialOrder: string }) 
             <input
               value={orderNumber}
               onChange={(e) => setOrderNumber(e.target.value)}
-              placeholder="যেমন: HZ-20260926-0001"
+              placeholder="যেমন: MZ-20261008-0001"
               className="w-full rounded-xl border border-ink/15 bg-cream/50 px-4 py-3 font-mono text-ink outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
             />
           </div>

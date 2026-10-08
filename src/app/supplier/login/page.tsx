@@ -43,7 +43,7 @@ export default function SupplierLoginPage() {
             S
           </div>
           <p className="font-display text-2xl text-slate-900">Supplier Portal</p>
-          <p className="text-sm text-slate-500 mt-1">Half Zipper</p>
+          <p className="text-sm text-slate-500 mt-1">Manza BD</p>
         </div>
 
         <form

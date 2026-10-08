@@ -428,7 +428,7 @@ export async function testDestination(
       body: JSON.stringify({
         event_source: "web",
         event_source_id: input.pixelId,
-        test_event_code: "HALFZIPPER-TEST",
+        test_event_code: "MANZABD-TEST",
         data: [
           {
             event: "ViewContent",
