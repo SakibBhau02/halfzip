@@ -349,38 +349,38 @@ function OrderForm({
               )}
             </div>
 
-            {/* combo badges */}
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map((n) => {
-                const price = comboSubtotal(cfg, n);
-                const save = comboSavings(cfg, n);
-                const free = n >= product.freeDeliveryAt;
-                return (
-                  <button
-                    key={n}
-                    onClick={() => setQty(n)}
-                    className={`rounded-xl border px-2 py-3 text-center transition ${
-                      qty === n
-                        ? "border-gold bg-gold/10 ring-1 ring-gold"
-                        : "border-black/10 bg-white hover:border-ink/40"
-                    }`}
-                  >
-                    <p className="font-display text-xl text-ink">{n}pcs</p>
-                    <p className="text-xs text-warmgray">{formatBDT(price)}</p>
-                    {save > 0 && (
-                      <p className="text-[10px] text-emerald-600 font-medium mt-0.5">
-                        সেভ {formatBDT(save)}
-                      </p>
-                    )}
-                    {free && (
-                      <p className="text-[10px] text-emerald-600 font-medium">
-                        ফ্রি ডেলিভারি
-                      </p>
-                    )}
-                  </button>
-                );
-              })}
+            {/* quantity stepper */}
+            <div className="bg-white rounded-xl border border-black/10 px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-ink">কয়টি নেবেন?</span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setQty(Math.max(1, qty - 1))}
+                  disabled={qty <= 1}
+                  aria-label="Decrease quantity"
+                  className="w-9 h-9 rounded-full border border-black/15 text-lg font-bold text-ink hover:border-ink transition disabled:opacity-30"
+                >
+                  −
+                </button>
+                <span className="font-display text-2xl text-ink w-8 text-center">
+                  {qty}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQty(Math.min(3, qty + 1))}
+                  disabled={qty >= 3}
+                  aria-label="Increase quantity"
+                  className="w-9 h-9 rounded-full border border-black/15 text-lg font-bold text-ink hover:border-ink transition disabled:opacity-30"
+                >
+                  +
+                </button>
+              </div>
             </div>
+            {qty >= product.freeDeliveryAt && (
+              <p className="text-center text-sm text-emerald-600 font-medium">
+                🎉 {qty}টি নিলে ডেলিভারি সম্পূর্ণ ফ্রি!
+              </p>
+            )}
           </div>
 
           {/* RIGHT — form */}
@@ -399,22 +399,21 @@ function OrderForm({
                     }`}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-semibold text-ink">
-                        Product {i + 1}
-                        {lines.length > 1 && (
-                          <span className="text-warmgray font-normal">
-                            {" "}
-                            · পরিধান {i + 1}
-                          </span>
-                        )}
+                      <p className="text-base font-bold text-ink">
+                        {lines.length > 1 ? `Product ${i + 1}` : "আপনার পছন্দ"}
                       </p>
                       {lc && (
-                        <span className="text-xs text-warmgray">{lc.name}</span>
+                        <span className="text-sm font-semibold text-gold">
+                          🎨 {lc.name}
+                        </span>
                       )}
                     </div>
 
-                    {/* colors */}
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    {/* colors — big focus */}
+                    <p className="text-xs font-medium text-warmgray mb-2">
+                      কালার সিলেক্ট করুন *
+                    </p>
+                    <div className="flex flex-wrap gap-3 mb-4">
                       {colors.map((c, ci) => (
                         <button
                           key={c.name}
@@ -425,18 +424,22 @@ function OrderForm({
                             onColorPick(ci);
                           }}
                           aria-label={c.name}
-                          className={`w-8 h-8 rounded-full border-2 transition ${
+                          title={c.name}
+                          className={`w-12 h-12 rounded-full border-[3px] transition ${
                             line.colorIdx === ci
-                              ? "border-ink scale-110"
-                              : "border-black/10 hover:border-ink/40"
+                              ? "border-gold scale-110 ring-2 ring-gold/40"
+                              : "border-black/10 hover:border-ink/50 hover:scale-105"
                           }`}
                           style={{ backgroundColor: c.hex }}
                         />
                       ))}
                     </div>
 
-                    {/* sizes */}
-                    <div className="flex flex-wrap gap-2">
+                    {/* sizes — big focus */}
+                    <p className="text-xs font-medium text-warmgray mb-2">
+                      সাইজ সিলেক্ট করুন *
+                    </p>
+                    <div className="flex flex-wrap gap-2.5">
                       {product.sizes.map((s) => {
                         const inStock =
                           lc?.variants.find((v) => v.size === s)?.stock ?? 0;
@@ -446,7 +449,7 @@ function OrderForm({
                             type="button"
                             disabled={inStock <= 0}
                             onClick={() => updateLine(i, { size: s })}
-                            className={`min-w-[48px] px-3 py-2 rounded-lg border text-sm font-medium transition ${
+                            className={`min-w-[64px] px-4 py-3 rounded-xl border-2 text-base font-bold transition ${
                               line.size === s
                                 ? "bg-ink text-cream border-ink"
                                 : inStock <= 0

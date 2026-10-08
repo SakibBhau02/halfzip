@@ -46,45 +46,41 @@ async function main() {
   });
   console.log(`✔ Supplier ready: ${supEmail}  (password: ${supPass})`);
 
-  // Seed the single product with the 5 colors × 4 sizes if none exists
+  // Seed the single product (Hooded Puffer Jacket, 5 colors × 4 sizes) if none exists.
+  // Images are uploaded afterwards via Admin → Products → Images (per-color).
   const existing = await prisma.product.findFirst();
   if (!existing) {
     const colors = [
+      { color: "Blue", colorHex: "#2a3d66", slug: "blue" },
       { color: "Black", colorHex: "#161616", slug: "black" },
-      { color: "Maroon", colorHex: "#6d1f2c", slug: "maroon" },
-      { color: "Green", colorHex: "#274d3a", slug: "green" },
-      { color: "Navy Blue", colorHex: "#1e2a48", slug: "navyblue" },
-      { color: "Off-White", colorHex: "#e9e3d7", slug: "offwhite" },
+      { color: "Army Green", colorHex: "#4b5320", slug: "armygreen" },
+      { color: "Khaki", colorHex: "#c3b091", slug: "khaki" },
+      { color: "Burgundy", colorHex: "#6d1f2c", slug: "burgundy" },
     ];
     const sizes = ["M", "L", "XL", "XXL"];
-    const price = 88000; // ৳880
+    const price = 160000; // ৳1600
 
     const product = await prisma.product.create({
       data: {
-        name: "Half Zipper Sweatshirt",
-        slug: "half-zipper-sweatshirt",
-        tagline: "Premium Winter Wear",
+        name: "Hooded Puffer Jacket",
+        slug: "hooded-puffer-jacket",
+        tagline: "Premium Winter Jacket",
         description:
-          "নরম ফ্লিস, ডাবল স্টিচিং আর পারফেক্ট ফিট — শীতে আরাম আর স্টাইল একসাথে।",
+          "হালকা ওজনের প্রিমিয়াম পাফার জ্যাকেট — হুডসহ, ভেতরে উষ্ণ ফিল, শীতের জন্য পারফেক্ট।",
         basePrice: price,
-        oldPrice: 129000,
+        oldPrice: 199000,
+        combo2Price: 320000,
+        combo3Price: 480000,
+        freeDeliveryAt: 2,
         insideFee: 6000,
         outsideFee: 12000,
-        images: {
-          create: colors.map((c, i) => ({
-            url: `/images/${c.slug}.webp`,
-            alt: `${c.color} Half Zipper Sweatshirt`,
-            color: c.color,
-            sortOrder: i,
-          })),
-        },
         variants: {
           create: colors.flatMap((c) =>
             sizes.map((s) => ({
               color: c.color,
               colorHex: c.colorHex,
               size: s,
-              sku: `${c.slug.toUpperCase()}-${s}`,
+              sku: `JACKET-${c.slug.toUpperCase()}-${s}`,
               price,
               stock: 10,
             }))
@@ -97,17 +93,17 @@ async function main() {
     console.log("ℹ Product already exists — skipping seed");
   }
 
-  // Demo supplier cost price for the product (৳600/pc reseller rate)
+  // Demo supplier cost price for the product (৳950/pc reseller rate)
   const prod = await prisma.product.findFirst();
   if (prod && supplier) {
     await prisma.supplierProductCost.upsert({
       where: {
         supplierId_productId: { supplierId: supplier.id, productId: prod.id },
       },
-      update: { costPrice: 60000 },
-      create: { supplierId: supplier.id, productId: prod.id, costPrice: 60000 },
+      update: { costPrice: 95000 },
+      create: { supplierId: supplier.id, productId: prod.id, costPrice: 95000 },
     });
-    console.log("✔ Supplier cost price set: ৳600/pc");
+    console.log("✔ Supplier cost price set: ৳950/pc");
   }
 }
 

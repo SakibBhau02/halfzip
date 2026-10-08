@@ -36,17 +36,17 @@ export type PublicProduct = {
 
 const FALLBACK: PublicProduct = {
   id: "fallback",
-  name: "Half Zipper Sweatshirt",
-  tagline: "Premium Winter Wear",
+  name: "Hooded Puffer Jacket",
+  tagline: "Premium Winter Jacket",
   description:
-    "নরম ফ্লিস, ডাবল স্টিচিং আর পারফেক্ট ফিট — শীতে আরাম আর স্টাইল একসাথে।",
-  basePrice: 88000,
-  oldPrice: 129000,
+    "হালকা ওজনের প্রিমিয়াম পাফার জ্যাকেট — হুডসহ, ভেতরে উষ্ণ ফিল।",
+  basePrice: 160000,
+  oldPrice: 199000,
   insideFee: 6000,
   outsideFee: 12000,
-  combo2Price: 165000,
-  combo3Price: 240000,
-  freeDeliveryAt: 3,
+  combo2Price: 320000,
+  combo3Price: 480000,
+  freeDeliveryAt: 2,
   colors: [],
   sizes: ["M", "L", "XL", "XXL"],
 };

@@ -18,20 +18,20 @@ const notoBengali = Noto_Sans_Bengali({
 });
 
 export const metadata: Metadata = {
-  title: "Half Zipper Sweatshirt — Premium Winter Wear in Bangladesh",
+  title: "Hooded Puffer Jacket — Premium Winter Wear in Bangladesh",
   description:
-    "Premium quality Half Zipper Sweatshirt. Soft fleece, durable fabric, perfect for winter. Cash on Delivery all over Bangladesh. Order now.",
+    "Premium hooded puffer jacket with warm inner fill. Cash on Delivery all over Bangladesh. Order now.",
   keywords: [
-    "half zipper sweatshirt",
-    "winter sweatshirt bd",
-    "half zipper price in bd",
-    "cash on delivery sweatshirt",
+    "hooded puffer jacket",
+    "puffer jacket bd",
+    "winter jacket price in bd",
+    "cash on delivery jacket",
     "premium winter wear bangladesh",
   ],
   openGraph: {
-    title: "Half Zipper Sweatshirt — Premium Winter Wear",
+    title: "Hooded Puffer Jacket — Premium Winter Wear",
     description:
-      "Soft fleece, durable stitching, perfect winter fit. Cash on Delivery all over Bangladesh.",
+      "Lightweight premium puffer jacket with hood. Cash on Delivery all over Bangladesh.",
     type: "website",
   },
 };
