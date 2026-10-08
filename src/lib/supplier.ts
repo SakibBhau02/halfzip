@@ -72,37 +72,64 @@ export async function recordSupplierWithdrawal(
 
 /**
  * Compute the reseller's margin for a delivered order.
- * goodsMargin = (customer goods price) − (supplier cost)
- * deliveryMargin = delivery fee charged to customer (supplier pays courier)
+ * CANONICAL FORMULA (courier truth):
+ *   collected = courier-collected COD (codCollected) or order total
+ *   cost      = supplier cost, per-pc adjusted on partial delivery
+ *   margin    = collected − cost
+ * Short collection shrinks OUR margin (supplier keeps full/per-pc cost).
  */
 export function computeMargin(order: {
   subtotal: number;
   deliveryFee: number;
   supplierCost: number;
+  codCollected?: number;
+  total?: number;
+  deliveredPcs?: number | null;
+  totalPcs?: number;
 }) {
+  const total = order.total ?? order.subtotal + order.deliveryFee;
+  const collected =
+    order.codCollected && order.codCollected > 0 ? order.codCollected : total;
+  const pcs = order.totalPcs ?? 0;
+  const dPcs = order.deliveredPcs ?? pcs;
+  const cost =
+    pcs > 0 && dPcs < pcs
+      ? Math.round((order.supplierCost * dPcs) / pcs)
+      : order.supplierCost;
+  // legacy split for display (goods vs delivery), informational only
   const goodsMargin = order.subtotal - order.supplierCost;
   const deliveryMargin = order.deliveryFee;
-  return { goodsMargin, deliveryMargin, total: goodsMargin + deliveryMargin };
+  return { goodsMargin, deliveryMargin, collected, cost, total: collected - cost };
 }
 
-/** Aggregate reseller margin across all delivered orders. */
+/** Aggregate reseller margin across all delivered orders (canonical formula). */
 export async function getMarginSummary() {
   const orders = await prisma.order.findMany({
     where: { status: "DELIVERED" },
-    select: { subtotal: true, deliveryFee: true, supplierCost: true, total: true },
+    select: { subtotal: true, deliveryFee: true, supplierCost: true, total: true, codCollected: true },
   });
   let goodsMargin = 0;
   let deliveryMargin = 0;
+  let collected = 0;
   let cost = 0;
   for (const o of orders) {
-    goodsMargin += o.subtotal - o.supplierCost;
-    deliveryMargin += o.deliveryFee;
-    cost += o.supplierCost;
+    const m = computeMargin({
+      subtotal: o.subtotal,
+      deliveryFee: o.deliveryFee,
+      supplierCost: o.supplierCost,
+      codCollected: o.codCollected,
+      total: o.total,
+    });
+    goodsMargin += m.goodsMargin;
+    deliveryMargin += m.deliveryMargin;
+    collected += m.collected;
+    cost += m.cost;
   }
   return {
     goodsMargin,
     deliveryMargin,
-    margin: goodsMargin + deliveryMargin,
+    collected,
+    margin: collected - cost,
     cost,
     deliveredOrders: orders.length,
   };

@@ -90,7 +90,10 @@ export default async function SupplierOrders() {
                     {formatBDT(so.supplierCost)}
                   </td>
                   <td className="px-4 py-3 font-medium text-emerald-600 whitespace-nowrap">
-                    +{formatBDT(so.order.subtotal - so.supplierCost + so.order.deliveryFee)}
+                    +{formatBDT(
+                      (so.order.codCollected > 0 ? so.order.codCollected : so.order.total) -
+                        so.supplierCost
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span

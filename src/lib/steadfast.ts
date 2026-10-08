@@ -131,19 +131,43 @@ export type SteadfastStatus = {
   consignment_id?: number;
   tracking_code?: string;
   invoice?: string;
+  /** COD actually collected by courier (BDT), if reported */
+  collected?: number | null;
+  /** pcs actually delivered (partial), if reported */
+  deliveredQty?: number | null;
   test: boolean;
 };
+
+/** Pull the first usable number from candidate keys (official field names vary). */
+export function pickNumber(data: unknown, keys: string[]): number | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  // also look one level inside `consignment` / `data` wrappers
+  const scopes: Record<string, unknown>[] = [obj];
+  for (const w of ["consignment", "data", "order"]) {
+    if (obj[w] && typeof obj[w] === "object") scopes.push(obj[w] as Record<string, unknown>);
+  }
+  for (const s of scopes) {
+    for (const k of keys) {
+      const v = s[k];
+      const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return null;
+}
 
 /**
  * Check live delivery status. Pass whichever identifier we have.
  * In TEST mode the status progresses with time since booking so the
  * full lifecycle can be demoed: pending → in_transit →
- * out_for_delivery → delivered.
+ * out_for_delivery → delivered. Mock collected = expected total.
  */
 export async function getSteadfastStatus(
   creds: SteadfastCreds,
   id: { consignmentId?: string | null; invoice?: string; trackingCode?: string | null },
-  bookedAt?: Date | null
+  bookedAt?: Date | null,
+  expectedTotalMinor?: number
 ): Promise<SteadfastStatus> {
   if (creds.testMode) {
     const mins = bookedAt
@@ -161,6 +185,7 @@ export async function getSteadfastStatus(
       delivery_status,
       tracking_code: id.trackingCode ?? undefined,
       invoice: id.invoice,
+      collected: expectedTotalMinor ?? null,
       test: true,
     };
   }
@@ -187,13 +212,31 @@ export async function getSteadfastStatus(
     );
   }
   const d = data?.delivery_status ?? data;
+  const status = String(
+    typeof d === "string" ? d : (d?.delivery_status ?? "unknown")
+  ).toLowerCase();
+  // COD collected + delivered qty (field names vary across API versions)
+  const collectedRaw = pickNumber(data, [
+    "cod_amount",
+    "collected_amount",
+    "cod_collected",
+    "collected",
+    "amount",
+    "cod",
+  ]);
   return {
-    delivery_status: String(
-      typeof d === "string" ? d : (d?.delivery_status ?? "unknown")
-    ).toLowerCase(),
+    delivery_status: status,
     consignment_id: data?.consignment_id,
     tracking_code: data?.tracking_code,
     invoice: data?.invoice,
+    // API reports Taka; convert to poisha
+    collected: collectedRaw != null ? Math.round(collectedRaw * 100) : null,
+    deliveredQty: pickNumber(data, [
+      "delivered_quantity",
+      "quantity",
+      "delivered_qty",
+      "item_quantity",
+    ]),
     test: false,
   };
 }

@@ -41,7 +41,7 @@ export async function updateSupplierOrderStatus(
 
   const so = await prisma.supplierOrder.findFirst({
     where: { orderId, supplierId },
-    include: { order: true },
+    include: { order: { include: { items: true } } },
   });
   if (!so) return { ok: false, error: "Forward পাওয়া যায়নি।" };
   if (!NEXT[so.status].includes(to)) {
@@ -76,11 +76,17 @@ export async function updateSupplierOrderStatus(
         where: { id: orderId },
         data: { status: "DELIVERED", paymentStatus: "PAID" },
       });
-      // Credit the RESELLER's margin: supplier collected COD, now owes us our cut.
-      const margin =
-        so.order.subtotal -
-        so.supplierCost +
-        so.order.deliveryFee;
+      // Canonical margin: collected (or total) − supplier cost
+      const { computeMargin } = await import("@/lib/supplier");
+      const pcs = so.order.items.reduce((s, i) => s + i.quantity, 0);
+      const margin = computeMargin({
+        subtotal: so.order.subtotal,
+        deliveryFee: so.order.deliveryFee,
+        supplierCost: so.supplierCost,
+        codCollected: so.order.codCollected,
+        total: so.order.total,
+        totalPcs: pcs,
+      }).total;
       await tx.supplierLedger.create({
         data: {
           supplierId,

@@ -120,6 +120,7 @@ model SupplierOrder {
   consignmentId  String?
   courierStatus  String? // raw courier status text
   statusCheckedAt DateTime? // last courier status sync
+  deliveredPcs   Int? // pcs actually delivered (partial); null = all
   note           String?
   forwardedAt    DateTime            @default(now())
   acceptedAt     DateTime?

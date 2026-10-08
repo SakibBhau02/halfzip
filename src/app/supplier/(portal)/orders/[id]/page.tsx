@@ -127,52 +127,52 @@ export default async function SupplierOrderDetail({
             </div>
           </div>
 
-          {/* এই order-এর হিসাব — reseller margin */}
+          {/* এই order-এর হিসাব — courier truth */}
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
             <h2 className="text-slate-900 font-semibold mb-3">
               এই Order-এর হিসাব
             </h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Customer price (বিক্রি)</span>
-                <span className="text-slate-900 font-medium">
-                  {formatBDT(so.order.subtotal)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">আপনার cost (কেনা)</span>
-                <span className="text-slate-900">
-                  − {formatBDT(so.supplierCost)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">ডেলিভারি চার্জ</span>
-                <span className="text-slate-900">
-                  + {formatBDT(so.order.deliveryFee)}
-                </span>
-              </div>
-              <div className="flex justify-between pt-2 mt-1 border-t border-amber-200">
-                <span className="text-slate-900 font-semibold">
-                  Reseller-এর লাভ
-                </span>
-                <span className="text-emerald-600 font-bold">
-                  {formatBDT(
-                    so.order.subtotal - so.supplierCost + so.order.deliveryFee
-                  )}
-                </span>
-              </div>
-              <p
-                className={`text-[11px] pt-1 ${
-                  so.status === "DELIVERED"
-                    ? "text-emerald-600"
-                    : "text-slate-500"
-                }`}
-              >
-                {so.status === "DELIVERED"
-                  ? "✓ Delivered — এই লাভ reseller-এর পাওনায় যোগ হয়েছে, আপনাকে দিতে হবে"
-                  : "⏳ Deliver হলে এই লাভ reseller-এর পাওনা হবে"}
-              </p>
-            </div>
+            {(() => {
+              const collected =
+                so.order.codCollected > 0 ? so.order.codCollected : so.order.total;
+              return (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">
+                      {so.order.codCollected > 0 ? "তুলেছে (courier final)" : "তুলবে (COD)"}
+                    </span>
+                    <span className="text-slate-900 font-medium">
+                      {formatBDT(collected)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">আপনার cost (কেনা)</span>
+                    <span className="text-slate-900">
+                      − {formatBDT(so.supplierCost)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-2 mt-1 border-t border-amber-200">
+                    <span className="text-slate-900 font-semibold">
+                      Reseller-এর লাভ
+                    </span>
+                    <span className="text-emerald-600 font-bold">
+                      {formatBDT(collected - so.supplierCost)}
+                    </span>
+                  </div>
+                  <p
+                    className={`text-[11px] pt-1 ${
+                      so.status === "DELIVERED"
+                        ? "text-emerald-600"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {so.status === "DELIVERED"
+                      ? "✓ Delivered — এই লাভ reseller-এর পাওনায় যোগ হয়েছে, আপনাকে দিতে হবে"
+                      : "⏳ Courier final এলে auto হিসাব হবে"}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

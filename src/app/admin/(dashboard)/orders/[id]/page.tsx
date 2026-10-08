@@ -365,6 +365,14 @@ export default async function OrderDetailPage({
                         {steadfastStatusBn(order.supplierOrder.courierStatus)}
                       </span>
                     </div>
+                    {order.codCollected > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Courier Collected</span>
+                        <span className="text-emerald-600 font-bold">
+                          {formatBDT(order.codCollected)}
+                        </span>
+                      </div>
+                    )}
                     {order.supplierOrder.statusCheckedAt && (
                       <p className="text-[11px] text-slate-400 text-right">
                         Last checked{" "}
@@ -399,54 +407,55 @@ export default async function OrderDetailPage({
             paymentStatus={order.paymentStatus}
           />
 
-          {/* reseller margin breakdown — বিক্রি vs কেনা */}
+          {/* reseller margin breakdown — courier truth */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5">
             <h2 className="text-slate-900 font-semibold mb-3">
               My Margin Breakdown
             </h2>
             {order.supplierOrder ? (
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">বিক্রি (customer pays goods)</span>
-                  <span className="text-slate-900 font-medium">
-                    {formatBDT(order.subtotal)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">কেনা (supplier cost)</span>
-                  <span className="text-slate-900">
-                    − {formatBDT(order.supplierCost)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">ডেলিভারি চার্জ (customer দেয়)</span>
-                  <span className="text-slate-900">
-                    + {formatBDT(order.deliveryFee)}
-                  </span>
-                </div>
-                <div className="flex justify-between pt-2 mt-1 border-t border-slate-100">
-                  <span className="text-slate-900 font-semibold">আমার লাভ</span>
-                  <span className="text-emerald-600 font-bold">
-                    {formatBDT(
-                      order.subtotal - order.supplierCost + order.deliveryFee
-                    )}
-                  </span>
-                </div>
-                <p
-                  className={`text-[11px] pt-1 ${
-                    order.status === "DELIVERED"
-                      ? "text-emerald-600"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {order.status === "DELIVERED"
-                    ? "✓ Delivered — margin আপনার পাওনায় যোগ হয়েছে"
-                    : "⏳ Deliver হলে margin পাওনায় যোগ হবে"}
-                </p>
-              </div>
+              (() => {
+                const collected =
+                  order.codCollected > 0 ? order.codCollected : order.total;
+                const margin = collected - order.supplierCost;
+                return (
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">
+                        {order.codCollected > 0 ? "তুলেছে (courier final)" : "তুলবে (order total)"}
+                      </span>
+                      <span className="text-slate-900 font-medium">
+                        {formatBDT(collected)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">কেনা (supplier cost)</span>
+                      <span className="text-slate-900">
+                        − {formatBDT(order.supplierCost)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-2 mt-1 border-t border-slate-100">
+                      <span className="text-slate-900 font-semibold">আমার লাভ</span>
+                      <span className="text-emerald-600 font-bold">
+                        {formatBDT(margin)}
+                      </span>
+                    </div>
+                    <p
+                      className={`text-[11px] pt-1 ${
+                        order.status === "DELIVERED"
+                          ? "text-emerald-600"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {order.status === "DELIVERED"
+                        ? "✓ Delivered — margin আপনার পাওনায় যোগ হয়েছে"
+                        : "⏳ Courier final এলে auto হিসাব হবে — হাতে কিছু করতে হবে না"}
+                    </p>
+                  </div>
+                );
+              })()
             ) : (
               <p className="text-sm text-slate-500">
-                Supplier-এর কাছে forward করলে এখানে বিক্রি vs কেনা vs লাভ দেখা যাবে।
+                Supplier-এর কাছে forward করলে এখানে তুলেছে vs কেনা vs লাভ দেখা যাবে।
               </p>
             )}
           </div>

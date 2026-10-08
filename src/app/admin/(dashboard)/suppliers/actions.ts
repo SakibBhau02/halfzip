@@ -376,8 +376,8 @@ export async function reloadBalances() {
 /* --------------------------- margin recalculation -------------------------- */
 
 /**
- * Recompute every EARNING ledger entry from its order:
- *   margin = বিক্রি (subtotal) − কেনা (supplierCost) + ডেলিভারি (deliveryFee)
+ * Recompute every EARNING ledger entry with the CANONICAL formula:
+ *   margin = collected (courier COD or total) − supplier cost (per-pc on partial)
  * Fixes entries written under an older formula. Returns what changed.
  */
 export async function recalculateMargins(): Promise<{
@@ -392,15 +392,28 @@ export async function recalculateMargins(): Promise<{
   } catch {
     return { ok: false, error: "Unauthorized" };
   }
+  const { computeMargin } = await import("@/lib/supplier");
   const earnings = await prisma.supplierLedger.findMany({
     where: { type: "EARNING" },
   });
   let fixed = 0;
   for (const e of earnings) {
     if (!e.orderId) continue;
-    const o = await prisma.order.findUnique({ where: { id: e.orderId } });
+    const o = await prisma.order.findUnique({
+      where: { id: e.orderId },
+      include: { items: true, supplierOrder: true },
+    });
     if (!o) continue;
-    const expected = o.subtotal - o.supplierCost + o.deliveryFee;
+    const pcs = o.items.reduce((s, i) => s + i.quantity, 0);
+    const expected = computeMargin({
+      subtotal: o.subtotal,
+      deliveryFee: o.deliveryFee,
+      supplierCost: o.supplierCost,
+      codCollected: o.codCollected,
+      total: o.total,
+      deliveredPcs: o.supplierOrder?.deliveredPcs ?? null,
+      totalPcs: pcs,
+    }).total;
     if (expected !== e.amount) {
       await prisma.$transaction([
         prisma.supplierLedger.update({
